@@ -1,0 +1,119 @@
+// Prisma schema for Stock & Sell
+// Docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+// ────────────────────────────────────────────────────────────
+// User
+// ────────────────────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  email     String   @unique
+  password  String
+  role      String   @default("user")   // "user" | "admin"
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products  Product[]
+  customers Customer[]
+  orders    Order[]
+
+  @@map("users")
+}
+
+// ────────────────────────────────────────────────────────────
+// Product
+// ────────────────────────────────────────────────────────────
+
+model Product {
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  name              String
+  sku               String   @unique
+  category          String
+  price             Float
+  quantity          Int      @default(0)
+  lowStockThreshold Int      @default(10)
+  imagePath         String?
+  description       String?
+
+  ownerId           String?  @db.ObjectId
+  owner             User?    @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+
+  orderItems        OrderItem[]
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([category])
+  @@index([name])
+  @@map("products")
+}
+
+// ────────────────────────────────────────────────────────────
+// Customer
+// ────────────────────────────────────────────────────────────
+
+model Customer {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  phone     String
+  email     String?
+  address   String?
+  notes     String?
+
+  ownerId   String?  @db.ObjectId
+  owner     User?    @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+
+  orders    Order[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([name])
+  @@map("customers")
+}
+
+// ────────────────────────────────────────────────────────────
+// Order
+// ────────────────────────────────────────────────────────────
+
+model Order {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  customerId   String   @db.ObjectId
+  customerName String
+  customer     Customer @relation(fields: [customerId], references: [id])
+  items        OrderItem[]
+  total        Float
+  status       String   @default("pending") // pending | processing | completed | cancelled
+  notes        String?
+
+  ownerId      String?  @db.ObjectId
+  owner        User?    @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([status])
+  @@map("orders")
+}
+
+// ────────────────────────────────────────────────────────────
+// OrderItem  (embedded inside Order)
+// ────────────────────────────────────────────────────────────
+
+type OrderItem {
+  productId   String
+  productName String
+  quantity    Int
+  price       Float
+}
