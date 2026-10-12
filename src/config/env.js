@@ -2,13 +2,25 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const required = ['DATABASE_URL', 'JWT_SECRET'];
+const missing = required.filter((key) => !process.env[key]);
 
-for (const key of required) {
-  if (!process.env[key]) {
-    console.error(`❌ Missing required env var: ${key}`);
+if (missing.length > 0) {
+  const msg = `❌ Missing required env vars: ${missing.join(', ')}`;
+  console.error(msg);
+  // Only exit in local dev — Vercel handles missing env via its own mechanism
+  if (process.env.NODE_ENV !== 'production') {
     process.exit(1);
+  } else {
+    throw new Error(msg);
   }
 }
+
+// for (const key of required) {
+//   if (!process.env[key]) {
+//     console.error(`❌ Missing required env var: ${key}`);
+//     process.exit(1);
+//   }
+// }
 
 export const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
