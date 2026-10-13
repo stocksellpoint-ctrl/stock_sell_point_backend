@@ -19,6 +19,6 @@ export const validate = (schema) => (req, res, next) => {
         path: i.path.join('.'),
         message: i.message,
       })) || [];
-    next(ApiError.badRequest('Validation failed', errors));
+    next(ApiError.badRequest('Validation failed','VALIDATION_ERROR', errors));
   }
 };
