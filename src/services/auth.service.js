@@ -38,7 +38,7 @@ export const authService = {
     if (!user) throw ApiError.notFound('No Account found with this email', 'USER_NOT_FOUND');
 
     const ok = await bcrypt.compare(password, user.password);
-    if (!ok) throw ApiError.unauthorized('Invalid credentials', 'INVALID_CREDENTIALS');
+    if (!ok) throw ApiError.invalidCredential('Invalid credentials', 'INVALID_CREDENTIALS');
 
     return { user: sanitize(user), token: signToken(user) };
   },

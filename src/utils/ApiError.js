@@ -14,6 +14,9 @@ export class ApiError extends Error {
   static unauthorized(msg = 'Unauthorized', code = 'UNAUTHORIZED') {
     return new ApiError(401, msg, code);
   }
+  static invalidCredential(msg = 'Invalid credentials', code = 'INVALID CREDENTIAL') {
+    return new ApiError(401, msg, code);
+  }
   static methodNotAllowed(msg = 'Method not allowed', code = 'MOTHOD_NOT_ALLOWED') {
     return new ApiError(405, msg, code);
   }
