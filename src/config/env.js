@@ -1,5 +1,4 @@
 import dotenv from 'dotenv';
-import { cloudinary } from './cloudinary';
 dotenv.config();
 
 const required = ['DATABASE_URL', 'JWT_SECRET'];
