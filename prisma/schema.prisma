@@ -32,6 +32,32 @@ model User {
 }
 
 // ────────────────────────────────────────────────────────────
+// Category
+// ────────────────────────────────────────────────────────────
+
+model Category {
+  id          String     @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  slug        String     @unique
+  description String?
+
+  // Self-reference for sub-categories
+  parentId    String?    @db.ObjectId
+  parent      Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children    Category[] @relation("CategoryHierarchy")
+
+  // Products in this category
+  products    Product[]
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([parentId])
+  @@map("categories")
+}
+
+
+// ────────────────────────────────────────────────────────────
 // Product
 // ────────────────────────────────────────────────────────────
 
@@ -39,11 +65,13 @@ model Product {
   id                String   @id @default(auto()) @map("_id") @db.ObjectId
   name              String
   sku               String   @unique
-  category          String
+  categoryId        String   @db.ObjectId 
+  category          Category @relation(fields: [categoryId],references: [id])
   price             Float
   quantity          Int      @default(0)
   lowStockThreshold Int      @default(10)
-  imagePath         String?
+  imageUrl          String?  // Cloudinary URL
+  imagePublicId     String? // Cloudinary public_id(for deletion)
   description       String?
 
   ownerId           String?  @db.ObjectId
@@ -54,7 +82,7 @@ model Product {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  @@index([category])
+  @@index([categoryId])
   @@index([name])
   @@map("products")
 }

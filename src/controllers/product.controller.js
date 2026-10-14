@@ -9,16 +9,39 @@ export const productController = {
   getById: asyncHandler(async (req, res) =>
     ApiResponse.ok(res, await productService.getById(req.params.id))
   ),
-  create: asyncHandler(async (req, res) =>
-    ApiResponse.created(res, await productService.create(req.body), 'Product created')
-  ),
-  update: asyncHandler(async (req, res) =>
-    ApiResponse.ok(
-      res,
-      await productService.update(req.params.id, req.body),
-      'Product updated'
-    )
-  ),
+
+  // create: asyncHandler(async (req, res) =>
+  //   ApiResponse.created(res, await productService.create(req.body), 'Product created')
+  // ),
+  create:asyncHandler(async(req,res)=>{
+    // multipart/form-data -> all fields come in as strings
+    const {name,sku,categoryId, price, quantity, lowStockThreshold, description} = req.body;
+
+    if(!name || !sku || !categoryId || !price || !quantity){
+      throw ApiError.badRequest(
+        'Missing required fields: name, sku, categoryId, price, quantity',
+        'MISSING_FIELDS'
+      );
+    }
+
+    const product = await productService.create(
+      { name, sku, categoryId, price, quantity, lowStockThreshold, description },
+      req.file?.buffer
+    );
+
+    return ApiResponse.created(res, product, 'Product created');
+  }),
+
+  update: asyncHandler(async (req, res) =>{
+    const product = await productService.update(
+      req.params.id, 
+      req.body,
+      req.file?.buffer 
+    );
+
+    return ApiResponse.ok(res, product, 'Product updated');
+  }),
+  
   delete: asyncHandler(async (req, res) => {
     await productService.delete(req.params.id);
     return ApiResponse.noContent(res);
