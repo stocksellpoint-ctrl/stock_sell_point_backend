@@ -23,7 +23,15 @@ export const errorHandler = (err, req, res, next) => {
       error = ApiError.badRequest(`Prisma error: ${err.code}`,'PRISMA_ERROR');
     }
   } else if (err instanceof Prisma.PrismaClientValidationError) {
-    error = ApiError.badRequest('Prisma validation error','PRISMA_VALIDATION');
+    // Prisma puts the real cause in err.message - log it and pass it
+    // through so you can see exactly what field is wrong.
+    console.error('PRISMA VALIDATION', err.message);
+    error = ApiError.badRequest(
+      process.env.NODE_ENV === 'development'
+        ? err.message
+        : 'Invalid data provided. Please check all fields',
+        'PRISMA_VALIDATION'
+    );
   } else if (!(err instanceof ApiError)) {
     error = new ApiError(
       err.statusCode || 500,
