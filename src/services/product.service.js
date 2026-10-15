@@ -74,6 +74,7 @@ export const productService = {
         sku, 
         categoryId:data.categoryId,
         price: parseFloat(data.price),
+        costPrice:parseFloat(data.costPrice ?? '0'),
         quantity: parseInt(data.quantity, 10),
         lowStockThreshold: parseInt(data.lowStockThreshold || '10', 10),
         description:data.description || null, 
@@ -118,6 +119,7 @@ export const productService = {
     if (data.sku !== undefined) updateData.sku = data.sku;
     if (data.categoryId !== undefined) updateData.categoryId = data.categoryId;
     if (data.price !== undefined) updateData.price = parseFloat(data.price);
+    if (data.costPrice !== undefined) updateData.costPrice = parseFloat(data.costPrice);
     if (data.quantity !== undefined) updateData.quantity = parseInt(data.quantity, 10);
     if (data.lowStockThreshold !== undefined)
       updateData.lowStockThreshold = parseInt(data.lowStockThreshold, 10);

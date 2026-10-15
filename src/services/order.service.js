@@ -32,6 +32,9 @@ export const orderService = {
   async create(data) {
     // Transactions require MongoDB replica set
     return prisma.$transaction(async (tx) => {
+
+      const itemsWithCost = [];
+
       // Verify and reduce stock for each item
       for (const item of data.items) {
         const product = await tx.product.findUnique({
@@ -49,6 +52,14 @@ export const orderService = {
           where: { id: item.productId },
           data: { quantity: product.quantity - item.quantity },
         });
+
+        itemsWithCost.push({
+          productId:item.productId, 
+          productName:product.name, 
+          quantity: item.quantity, 
+          price:item.price, 
+          costPrice:product.costPrice ?? 0, 
+        })
       }
 
       // Verify customer exists
@@ -62,7 +73,8 @@ export const orderService = {
         data: {
           customerId: data.customerId,
           customerName: customer.name,
-          items: data.items,
+          // items: data.items, 
+          items:itemsWithCost,
           total: data.total,
           status: data.status || 'pending',
           notes: data.notes,

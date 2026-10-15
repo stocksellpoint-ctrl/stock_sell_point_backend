@@ -67,7 +67,8 @@ model Product {
   sku               String   @unique
   categoryId        String   @db.ObjectId 
   category          Category @relation(fields: [categoryId],references: [id])
-  price             Float
+  price             Float     // selling price
+  costPrice         Float
   quantity          Int      @default(0)
   lowStockThreshold Int      @default(10)
   imageUrl          String?  // Cloudinary URL
@@ -144,4 +145,5 @@ type OrderItem {
   productName String
   quantity    Int
   price       Float
+  costPrice   Float @default(0)
 }
