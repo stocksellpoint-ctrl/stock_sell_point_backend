@@ -3,6 +3,6 @@ import { Router } from 'express';
 export const reportRoutes = Router();
 
 
-reportRoutes.get('/inventoryReport', reportController.inventoryReport);
-reportRoutes.get('/profitReport', reportController.profitReport);
+reportRoutes.get('/inventory', reportController.inventoryReport);
+reportRoutes.get('/profit', reportController.profitReport);
 

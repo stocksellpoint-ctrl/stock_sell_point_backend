@@ -4,6 +4,7 @@ import { productRoutes } from './product.routes.js';
 import { customerRoutes } from './customer.routes.js';
 import { orderRoutes } from './order.routes.js';
 import { categoryRoutes } from './category.routes.js';
+import { reportRoutes } from './report.routes.js';
 
 export const apiRoutes = Router();
 
@@ -21,3 +22,4 @@ apiRoutes.use('/products', productRoutes);
 apiRoutes.use('/customers', customerRoutes);
 apiRoutes.use('/orders', orderRoutes);
 apiRoutes.use('/categories',categoryRoutes);
+apiRoutes.use('/reports',reportRoutes);
