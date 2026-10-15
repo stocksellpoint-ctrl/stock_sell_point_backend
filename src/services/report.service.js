@@ -1,3 +1,4 @@
+import { prisma } from '../config/database.js';
 
 export const reportService = { 
     async inventoryReport() {
