@@ -1,16 +1,26 @@
 import { z } from 'zod';
 
+const orderItemSchema = z.object({
+  productId: z.string().min(1),
+  productName: z.string().min(1),
+  quantity: z.number().int().positive(),
+  price: z.number().nonnegative(),
+  discountType: z.enum(['none', 'amount', 'percent']).optional(),
+  discountValue: z.number().nonnegative().optional(),
+});
+
 const orderBody = z.object({
   customerId: z.string().min(1),
   customerName: z.string().min(1).optional(),
   items: z
     .array(
-      z.object({
-        productId: z.string().min(1),
-        productName: z.string().min(1),
-        quantity: z.number().int().positive(),
-        price: z.number().nonnegative(),
-      })
+      // z.object({
+      //   productId: z.string().min(1),
+      //   productName: z.string().min(1),
+      //   quantity: z.number().int().positive(),
+      //   price: z.number().nonnegative(),
+      // })
+      orderItemSchema
     )
     .min(1),
   total: z.number().nonnegative(),

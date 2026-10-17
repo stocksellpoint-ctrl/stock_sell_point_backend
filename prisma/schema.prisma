@@ -122,10 +122,16 @@ model Order {
   customerName String
   customer     Customer @relation(fields: [customerId], references: [id])
   items        OrderItem[]
-  total        Float
+
+  subtotal        Float       @default(0)   // ★ sum of items before discount
+  // discountType    String      @default("none")  // ★ "none" | "amount" | "percent"
+  // discountValue   Float       @default(0)   // ★ the raw value (e.g. 10 for 10%, or 20 for AED 20)
+  discountAmount  Float       @default(0)   // ★ computed AED discount
+  total           Float                     // ★ final total after discount (what customer pays)
+
   status       String   @default("pending") // pending | processing | completed | cancelled
   notes        String?
-
+  
   ownerId      String?  @db.ObjectId
   owner        User?    @relation(fields: [ownerId], references: [id], onDelete: SetNull)
 
@@ -141,9 +147,14 @@ model Order {
 // ────────────────────────────────────────────────────────────
 
 type OrderItem {
-  productId   String
-  productName String
-  quantity    Int
-  price       Float
-  costPrice   Float @default(0)
+  productId       String
+  productName     String
+  quantity        Int
+  price           Float      // unit selling price
+  costPrice       Float @default(0)
+
+  discountType    String @default("none")  // "none" | "amount" | "percent" 
+  discountValue   Float @default(0)        // value in AED or % , user input
+  discountAmount  Float @default(0)        // computed per-unit discount in AED
+
 }

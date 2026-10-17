@@ -47,12 +47,12 @@ export const reportService = {
 
     return {
         totals: {
-        products: products.length,
-        items: totalItems,
-        sellingValue: Number(totalSellingValue.toFixed(2)),
-        costValue: Number(totalCostValue.toFixed(2)),
-        potentialProfit: Number(potentialProfit.toFixed(2)),
-        lowStockCount: lowStock.length,
+            products: products.length,
+            items: totalItems,
+            sellingValue: Number(totalSellingValue.toFixed(2)),
+            costValue: Number(totalCostValue.toFixed(2)),
+            potentialProfit: Number(potentialProfit.toFixed(2)),
+            lowStockCount: lowStock.length,
         },
         categories: Object.values(byCategory).sort(
         (a, b) => b.sellingValue - a.sellingValue
@@ -78,6 +78,7 @@ export const reportService = {
         let totalRevenue = 0;
         let totalCost = 0;
         let totalItems = 0;
+        let totalDiscount = 0;
 
         const dailyMap = {}; // 'YYYY-MM-DD' → { revenue, cost, profit, orders, items }
         const productMap = {}; // productId → { name, qty, revenue, cost, profit }
@@ -85,45 +86,48 @@ export const reportService = {
         for (const order of orders) {
             const dayKey = order.createdAt.toISOString().slice(0, 10);
             if (!dailyMap[dayKey]) {
-            dailyMap[dayKey] = {
-                date: dayKey,
-                revenue: 0,
-                cost: 0,
-                profit: 0,
-                orders: 0,
-                items: 0,
-            };
+                dailyMap[dayKey] = {
+                    date: dayKey,
+                    revenue: 0,
+                    cost: 0,
+                    profit: 0,
+                    orders: 0,
+                    items: 0,
+                    discount:0,
+                };
             }
             dailyMap[dayKey].revenue += order.total;
             dailyMap[dayKey].orders += 1;
+            dailyMap[dayKey].discount += order.discountAmount ?? 0;
+            totalDiscount += order.discountAmount ?? 0;
 
             for (const item of order.items) {
-            const itemRevenue = item.price * item.quantity;
-            const itemCost = (item.costPrice ?? 0) * item.quantity;
-            const itemProfit = itemRevenue - itemCost;
+                const itemRevenue = item.price * item.quantity;
+                const itemCost = (item.costPrice ?? 0) * item.quantity;
+                const itemProfit = itemRevenue - itemCost;
 
-            totalRevenue += itemRevenue;
-            totalCost += itemCost;
-            totalItems += item.quantity;
+                totalRevenue += itemRevenue;
+                totalCost += itemCost;
+                totalItems += item.quantity;
 
-            dailyMap[dayKey].cost += itemCost;
-            dailyMap[dayKey].profit += itemProfit;
-            dailyMap[dayKey].items += item.quantity;
+                dailyMap[dayKey].cost += itemCost;
+                dailyMap[dayKey].profit += itemProfit;
+                dailyMap[dayKey].items += item.quantity;
 
-            if (!productMap[item.productId]) {
-                productMap[item.productId] = {
-                productId: item.productId,
-                productName: item.productName,
-                quantity: 0,
-                revenue: 0,
-                cost: 0,
-                profit: 0,
-                };
-            }
-            productMap[item.productId].quantity += item.quantity;
-            productMap[item.productId].revenue += itemRevenue;
-            productMap[item.productId].cost += itemCost;
-            productMap[item.productId].profit += itemProfit;
+                if (!productMap[item.productId]) {
+                    productMap[item.productId] = {
+                        productId: item.productId,
+                        productName: item.productName,
+                        quantity: 0,
+                        revenue: 0,
+                        cost: 0,
+                        profit: 0,
+                    };
+                }
+                productMap[item.productId].quantity += item.quantity;
+                productMap[item.productId].revenue += itemRevenue;
+                productMap[item.productId].cost += itemCost;
+                productMap[item.productId].profit += itemProfit;
             }
         }
 
@@ -133,16 +137,17 @@ export const reportService = {
 
         return {
             period: {
-            from: startDate.toISOString(),
-            to: endDate.toISOString(),
+                from: startDate.toISOString(),
+                to: endDate.toISOString(),
             },
             totals: {
-            revenue: Number(totalRevenue.toFixed(2)),
-            cost: Number(totalCost.toFixed(2)),
-            profit: Number(totalProfit.toFixed(2)),
-            margin: Number(margin.toFixed(2)),
-            orders: orders.length,
-            itemsSold: totalItems,
+                revenue: Number(totalRevenue.toFixed(2)),
+                cost: Number(totalCost.toFixed(2)),
+                profit: Number(totalProfit.toFixed(2)),
+                margin: Number(margin.toFixed(2)),
+                orders: orders.length,
+                itemsSold: totalItems,
+                totalDiscount:Number(totalDiscount.toFixed(2)),
             },
             daily: Object.values(dailyMap)
             .sort((a, b) => a.date.localeCompare(b.date))
@@ -151,6 +156,7 @@ export const reportService = {
                 revenue: Number(d.revenue.toFixed(2)),
                 cost: Number(d.cost.toFixed(2)),
                 profit: Number(d.profit.toFixed(2)),
+                discount:Number(d.discount.toFixed(2)),
             })),
             topProducts: Object.values(productMap)
             .sort((a, b) => b.profit - a.profit)
