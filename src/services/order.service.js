@@ -29,41 +29,166 @@ export const orderService = {
     return order;
   },
 
-  async create(data) {
-    // Transactions require MongoDB replica set
-    return prisma.$transaction(async (tx) => {
+  // async create(data) {
+  //   // Transactions require MongoDB replica set
+  //   return prisma.$transaction(async (tx) => {
 
+  //     const itemsWithCost = [];
+  //     let subTotal = 0;
+  //     let totalDiscount = 0;
+
+  //     // Verify and reduce stock for each item
+  //     for (const item of data.items) {
+  //       const product = await tx.product.findUnique({
+  //         where: { id: item.productId },
+  //       });
+  //       if (!product)
+  //         throw ApiError.notFound(
+  //         `Product not found: ${item.productId}`,
+  //         "PRODUCT_NOT_FOUND"
+  //       );
+  //       if (product.quantity < item.quantity) {
+  //         throw ApiError.badRequest(
+  //           `Insufficient stock for ${product.name} ` + `(have ${product.quantity}, need ${item.quantity})`,
+  //           'INSUFFICIENT_STOCK'
+  //         );
+  //       }
+
+  //        // ── Per-item discount computation ───────────────
+  //       let dt = item.discountType || 'none';
+  //       let dv = parseFloat(item.discountValue ?? 0);
+  //       let unitDiscount = 0;
+
+  //       if (dt === 'percent') {
+  //         dv = Math.max(0, Math.min(100, dv));
+  //         unitDiscount = (item.price * dv) / 100;
+  //       } else if (dt === 'amount') {
+  //         dv = Math.max(0, Math.min(item.price, dv));
+  //         unitDiscount = dv;
+  //       } else {
+  //         dt = 'none';
+  //         dv = 0;
+  //         unitDiscount = 0;
+  //       }
+
+  //       unitDiscount = Number(unitDiscount.toFixed(2));
+  //       const lineSubtotal = item.price * item.quantity;
+  //       const lineDiscount = unitDiscount * item.quantity;
+
+  //       subTotal += lineSubtotal;
+  //       totalDiscount += lineDiscount;
+
+
+  //       // Decrement stock
+
+  //       await tx.product.update({
+  //         where: { id: item.productId },
+  //         data: { quantity: product.quantity - item.quantity },
+  //       });
+
+  //       itemsWithCost.push({
+  //         productId:item.productId, 
+  //         productName:product.name, 
+  //         quantity: item.quantity, 
+  //         price:item.price, 
+  //         costPrice:product.costPrice ?? 0, 
+  //         discountType:dt, 
+  //         discountValue: dv, 
+  //         discountAmount: unitDiscount,
+  //       });
+  //     }
+
+  //     // Verify customer exists
+  //     const customer = await tx.customer.findUnique({
+  //       where: { id: data.customerId },
+  //     });
+  //     if (!customer) throw ApiError.notFound('Customer not found','CUSTOMER_NOT_FOUND');
+
+  //     const total = Number((subTotal - totalDiscount).toFixed(2));
+
+  //     // Create order
+  //     return tx.order.create({
+  //       data: {
+  //         customerId: data.customerId,
+  //         customerName: customer.name,
+  //         // items: data.items, 
+  //         items:itemsWithCost,
+  //         subtotal:Number(subTotal.toFixed(2)),
+  //         discountAmount:Number(totalDiscount.toFixed(2)),
+  //         total: data.total,
+  //         status: data.status || 'pending',
+  //         notes: data.notes || null,
+  //       },
+  //     });
+  //   });
+  // },
+
+
+  async create(data) {
+
+    console.log('═══════════════════════════════════════');
+    console.log('CREATE ORDER — incoming data');
+    console.log('customerId:', data.customerId);
+    console.log('items count:', data.items?.length);
+    console.log('═══════════════════════════════════════');
+
+    return prisma.$transaction(async (tx) => {
       const itemsWithCost = [];
-      let subTotal = 0;
+      let subtotal = 0;
       let totalDiscount = 0;
 
-      // Verify and reduce stock for each item
       for (const item of data.items) {
+        // ── Force numbers (defensive) ─────────────────────
+        const qty = Number(item.quantity);
+        const unitPrice = Number(item.price);
+        const rawDiscValue = Number(item.discountValue ?? 0);
+        const discType = item.discountType || 'none';
+
+        console.log(
+          `ITEM: ${item.productName} | qty=${qty} | price=${unitPrice} | ` +
+            `disc=${discType}/${rawDiscValue}`
+        );
+
+        if (!Number.isFinite(qty) || qty <= 0) {
+          throw ApiError.badRequest(
+            `Invalid quantity for ${item.productName}`,
+            'INVALID_QUANTITY'
+          );
+        }
+        if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+          throw ApiError.badRequest(
+            `Invalid price for ${item.productName}`,
+            'INVALID_PRICE'
+          );
+        }
+
         const product = await tx.product.findUnique({
           where: { id: item.productId },
         });
-        if (!product)
+        if (!product) {
           throw ApiError.notFound(
-          `Product not found: ${item.productId}`,
-          "PRODUCT_NOT_FOUND"
-        );
-        if (product.quantity < item.quantity) {
+            `Product not found: ${item.productId}`,
+            'PRODUCT_NOT_FOUND'
+          );
+        }
+        if (product.quantity < qty) {
           throw ApiError.badRequest(
-            `Insufficient stock for ${product.name} ` + `(have ${product.quantity}, need ${item.quantity})`,
+            `Insufficient stock for ${product.name} ` +
+              `(have ${product.quantity}, need ${qty})`,
             'INSUFFICIENT_STOCK'
           );
         }
 
-         // ── Per-item discount computation ───────────────
-        let dt = item.discountType || 'none';
-        let dv = parseFloat(item.discountValue ?? 0);
+        // ── Per-item discount ─────────────────────────────
+        let dt = discType;
+        let dv = rawDiscValue;
         let unitDiscount = 0;
 
         if (dt === 'percent') {
           dv = Math.max(0, Math.min(100, dv));
-          unitDiscount = (item.price * dv) / 100;
+          unitDiscount = (unitPrice * dv) / 100;
         } else if (dt === 'amount') {
-          dv = Math.max(0, Math.min(item.price, dv));
+          dv = Math.max(0, Math.min(unitPrice, dv));
           unitDiscount = dv;
         } else {
           dt = 'none';
@@ -72,57 +197,84 @@ export const orderService = {
         }
 
         unitDiscount = Number(unitDiscount.toFixed(2));
-        const lineSubtotal = item.price * item.quantity;
-        const lineDiscount = unitDiscount * item.quantity;
+        const lineSubtotal = unitPrice * qty;
+        const lineDiscount = unitDiscount * qty;
 
-        subTotal += lineSubtotal;
+        console.log(
+          `  → lineSubtotal=${lineSubtotal}, unitDiscount=${unitDiscount}, ` +
+            `lineDiscount=${lineDiscount}`
+        );
+
+        subtotal += lineSubtotal;
         totalDiscount += lineDiscount;
-
-
-        // Decrement stock
 
         await tx.product.update({
           where: { id: item.productId },
-          data: { quantity: product.quantity - item.quantity },
+          data: { quantity: product.quantity - qty },
         });
 
         itemsWithCost.push({
-          productId:item.productId, 
-          productName:product.name, 
-          quantity: item.quantity, 
-          price:item.price, 
-          costPrice:product.costPrice ?? 0, 
-          discountType:dt, 
-          discountValue: dv, 
+          productId: item.productId,
+          productName: product.name,
+          quantity: qty,
+          price: unitPrice,
+          costPrice: Number(product.costPrice) || 0,
+          discountType: dt,
+          discountValue: dv,
           discountAmount: unitDiscount,
         });
       }
 
-      // Verify customer exists
       const customer = await tx.customer.findUnique({
         where: { id: data.customerId },
       });
-      if (!customer) throw ApiError.notFound('Customer not found','CUSTOMER_NOT_FOUND');
+      if (!customer) {
+        throw ApiError.notFound('Customer not found', 'CUSTOMER_NOT_FOUND');
+      }
 
-      const total = Number((subTotal - totalDiscount).toFixed(2));
+      // ── Final totals ────────────────────────────────────
+      subtotal = Number(subtotal.toFixed(2));
+      totalDiscount = Number(totalDiscount.toFixed(2));
+      const total = Number((subtotal - totalDiscount).toFixed(2));
 
-      // Create order
+      console.log('═══════════════════════════════════════');
+      console.log('FINAL TOTALS');
+      console.log('subtotal:', subtotal);
+      console.log('totalDiscount:', totalDiscount);
+      console.log('total:', total);
+      console.log('═══════════════════════════════════════');
+
+      // ── Sanity check ────────────────────────────────────
+      if (!Number.isFinite(total) || total < 0) {
+        console.error('CRITICAL: Invalid total computed', {
+          subtotal,
+          totalDiscount,
+          total,
+        });
+        throw ApiError.internal(
+          'Could not compute order total',
+          'TOTAL_COMPUTE_ERROR'
+        );
+      }
+
+      const orderData = {
+        customerId: data.customerId,
+        customerName: customer.name,
+        items: itemsWithCost,
+        subtotal,
+        discountAmount: totalDiscount,
+        total,
+        status: data.status || 'pending',
+        notes: data.notes || null,
+      };
+
+      console.log('SAVING ORDER:', JSON.stringify(orderData, null, 2));
+
       return tx.order.create({
-        data: {
-          customerId: data.customerId,
-          customerName: customer.name,
-          // items: data.items, 
-          items:itemsWithCost,
-          subtotal:Number(subTotal.toFixed(2)),
-          discountAmount:Number(totalDiscount.toFixed(2)),
-          total: data.total,
-          status: data.status || 'pending',
-          notes: data.notes || null,
-        },
+        data: orderData,
       });
     });
   },
-
   async updateStatus(id, status) {
     await orderService.getById(id);
     return prisma.order.update({ where: { id }, data: { status } });
