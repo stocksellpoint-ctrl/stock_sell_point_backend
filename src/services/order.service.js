@@ -89,6 +89,7 @@ export const orderService = {
   //       itemsWithCost.push({
   //         productId:item.productId, 
   //         productName:product.name, 
+  //         categoryId:product.categoryId,
   //         quantity: item.quantity, 
   //         price:item.price, 
   //         costPrice:product.costPrice ?? 0, 
@@ -216,6 +217,7 @@ export const orderService = {
         itemsWithCost.push({
           productId: item.productId,
           productName: product.name,
+          categoryId:product.categoryId,
           quantity: qty,
           price: unitPrice,
           costPrice: Number(product.costPrice) || 0,

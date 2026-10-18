@@ -149,6 +149,7 @@ model Order {
 type OrderItem {
   productId       String
   productName     String
+  categoryId     String   @default("")   // ★ NEW
   quantity        Int
   price           Float      // unit selling price
   costPrice       Float @default(0)
