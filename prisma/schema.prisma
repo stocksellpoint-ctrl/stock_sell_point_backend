@@ -24,6 +24,8 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  stockMovements StockMovement[]
+
   products  Product[]
   customers Customer[]
   orders    Order[]
@@ -74,6 +76,8 @@ model Product {
   imageUrl          String?  // Cloudinary URL
   imagePublicId     String? // Cloudinary public_id(for deletion)
   description       String?
+
+  stockMovements StockMovement[]
 
   ownerId           String?  @db.ObjectId
   owner             User?    @relation(fields: [ownerId], references: [id], onDelete: SetNull)
@@ -141,6 +145,36 @@ model Order {
   @@index([status])
   @@map("orders")
 }
+
+
+// ------------------------------------------------------
+// Track Historical Stock
+// ------------------------------------------------------ 
+model StockMovement {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  productId    String   @db.ObjectId
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  // Positive for stock in (purchase), Negative for stock out (sale)
+  quantity     Int      
+  type         String   // "sale" | "purchase" | "adjustment" | "initial"
+  
+  // Snapshot the cost/price at the time of movement for accurate historical calculation
+  unitCost     Float?   
+  unitPrice    Float?   
+  
+  referenceId  String?  // The orderId (if type is sale)
+  notes        String?
+  
+  createdAt    DateTime @default(now())
+  ownerId      String?  @db.ObjectId
+  owner        User?    @relation(fields: [ownerId], references: [id])
+
+  @@index([productId])
+  @@index([createdAt])
+  @@map("stock_movements")
+}
+
 
 // ────────────────────────────────────────────────────────────
 // OrderItem  (embedded inside Order)

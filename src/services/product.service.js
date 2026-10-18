@@ -68,21 +68,56 @@ export const productService = {
       imageUrl = uploaded?.url;
       imagePublicId = uploaded?.publicId;
     }
-    return prisma.product.create({
-      data: { 
-        name:data.name,
-        sku, 
-        categoryId:data.categoryId,
-        price: parseFloat(data.price),
-        costPrice:parseFloat(data.costPrice ?? '0'),
-        quantity: parseInt(data.quantity, 10),
-        lowStockThreshold: parseInt(data.lowStockThreshold || '10', 10),
-        description:data.description || null, 
-        imageUrl,
-        imagePublicId
-       },
-       include: {category:true},
+
+    // Use a transaction to create product AND log initial stock
+    return prisma.$transaction(async(tx)=>{
+      const product = await tx.product.create({
+        data: { 
+          name:data.name,
+          sku, 
+          categoryId:data.categoryId,
+          price: parseFloat(data.price),
+          costPrice:parseFloat(data.costPrice ?? '0'),
+          quantity: parseInt(data.quantity, 10),
+          lowStockThreshold: parseInt(data.lowStockThreshold || '10', 10),
+          description:data.description || null, 
+          imageUrl,
+          imagePublicId
+        },
+        include: {category:true},
+      });
+
+      // Log initial stock
+      if(product.quantity > 0){
+        await tx.stockMovement.create({
+          data:{
+            productId: product.id,
+            quantity:product.quantity,
+            type:'initial',
+            unitCost:product.costPrice,
+            unitPrice:product.price,
+            notes:'Initial stock',
+          }
+        })
+      }
+      return product;
+      
     });
+    // return prisma.product.create({
+    //   data: { 
+    //     name:data.name,
+    //     sku, 
+    //     categoryId:data.categoryId,
+    //     price: parseFloat(data.price),
+    //     costPrice:parseFloat(data.costPrice ?? '0'),
+    //     quantity: parseInt(data.quantity, 10),
+    //     lowStockThreshold: parseInt(data.lowStockThreshold || '10', 10),
+    //     description:data.description || null, 
+    //     imageUrl,
+    //     imagePublicId
+    //    },
+    //    include: {category:true},
+    // });
   },
 
   async update(id, data, imageBuffer) {
@@ -128,16 +163,50 @@ export const productService = {
       updateData.imageUrl = imageUrl;
       updateData.imagePublicId = imagePublicId;
     }
+    
 
-    return prisma.product.update({ 
-      where: { id }, 
-      data: updateData,
-      include: {category:true}, 
+    // return prisma.product.update({ 
+    //   where: { id }, 
+    //   data: updateData,
+    //   include: {category:true}, 
+    // });
+
+
+
+    // wrap in a transaction to update product and log stock
+    return prisma.$transaction(async(tx)=>{
+      // check if quantity is changing to log a movement
+      const newQty = data.quantity !== undefined ? parseInt(data.quantity, 10) : existing.quantity;
+      const qtyDiff = newQty - existing.quantity;
+
+      if(qtyDiff !== 0){
+        await tx.stockMovement.create({
+          data:{
+            productId:id, 
+            quantity:qtyDiff, 
+            type:qtyDiff > 0 ? 'purchase' : 'adjustment',
+            unitCost:data.costPrice !== undefined ? parseInt(data.costPrice) : existing.costPrice, 
+            unitPrice: data.price !== undefined ? parseInt(data.price) : existing.price,
+            notes:'Manual stock update via product edit',
+          }
+        })
+      }
+
+      // update the product 
+      return tx.product.update({
+        where:{id},
+        data:updateData,
+        include:{category: true}, 
+      });
     });
+
+
   },
 
   async delete(id) {
     const product = await productService.getById(id);
+
+    // Delete image from cloudinary if it exists
     if(product.imagePublicId){
       await uploadService.deleteImage(product.imagePublicId);
     }
