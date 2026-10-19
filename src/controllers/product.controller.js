@@ -83,10 +83,7 @@ export const productController = {
       throw ApiError.unauthorized('Authentication required', 'AUTH_REQUIRED');
     }
 
-    const data = await productService.list({
-      ...req.query,
-      ownerId,
-    });
+    const data = await productService.list(req.query);
 
     return ApiResponse.ok(res, data);
   }),

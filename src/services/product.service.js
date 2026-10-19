@@ -190,15 +190,12 @@ export const productService = {
     subCategoryId,
     page = 1,
     limit = 50,
-    ownerId,
+    
   } = {}) {
     page = parseInt(page, 10) || 1;
     limit = parseInt(limit, 10) || 50;
 
     const where = {};
-
-    // ★ Enforce ownership if provided
-    if (ownerId) where.ownerId = ownerId;
 
     if (categoryId) where.categoryId = categoryId;
     if (subCategoryId) where.subCategoryId = subCategoryId;
