@@ -25,7 +25,6 @@ model User {
   updatedAt DateTime @updatedAt
 
   stockMovements StockMovement[]
-
   products  Product[]
   customers Customer[]
   orders    Order[]
@@ -69,7 +68,7 @@ model Product {
   sku               String   @unique
   categoryId        String   @db.ObjectId 
   category          Category @relation(fields: [categoryId],references: [id])
-  price             Float     // selling price
+
   costPrice         Float
   quantity          Int      @default(0)
   lowStockThreshold Int      @default(10)
@@ -78,10 +77,8 @@ model Product {
   description       String?
 
   stockMovements StockMovement[]
-
   ownerId           String?  @db.ObjectId
   owner             User?    @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-
   orderItems        OrderItem[]
 
   createdAt         DateTime @default(now())
@@ -106,7 +103,6 @@ model Customer {
 
   ownerId   String?  @db.ObjectId
   owner     User?    @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-
   orders    Order[]
 
   createdAt DateTime @default(now())
@@ -121,11 +117,12 @@ model Customer {
 // ────────────────────────────────────────────────────────────
 
 model Order {
-  id           String   @id @default(auto()) @map("_id") @db.ObjectId
-  customerId   String   @db.ObjectId
-  customerName String
-  customer     Customer @relation(fields: [customerId], references: [id])
-  items        OrderItem[]
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  customerId    String   @db.ObjectId
+  customerName  String
+  customerPhone String @default("") 
+  customer      Customer @relation(fields: [customerId], references: [id])
+  items         OrderItem[]
 
   subtotal        Float       @default(0)   // ★ sum of items before discount
   // discountType    String      @default("none")  // ★ "none" | "amount" | "percent"
@@ -185,7 +182,8 @@ type OrderItem {
   productName     String
   categoryId     String   @default("")   // ★ NEW
   quantity        Int
-  price           Float      // unit selling price
+
+  sellingPrice    Float      // unit selling price set by the cashier or seller
   costPrice       Float @default(0)
 
   discountType    String @default("none")  // "none" | "amount" | "percent" 

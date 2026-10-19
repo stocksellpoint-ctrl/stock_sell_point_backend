@@ -9,7 +9,7 @@ export const productService = {
 
     const where = {};
     if (categoryId) where.categoryId = categoryId;
-    if(subCategoryId) where.subCategoryId = subCategoryId;
+    if (subCategoryId) where.subCategoryId = subCategoryId;
     if (search) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
@@ -23,7 +23,7 @@ export const productService = {
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
-        include:{category:true},
+        include: { category: true },
       }),
       prisma.product.count({ where }),
     ]);
@@ -32,92 +32,70 @@ export const productService = {
   },
 
   async getById(id) {
-    const product = await prisma.product.findUnique({ 
+    const product = await prisma.product.findUnique({
       where: { id },
-      include: {category: true},
+      include: { category: true },
     });
-    if (!product) throw ApiError.notFound(
-      'Product not found',
-      'PRODUCT_NOT_FOUND'
-    );
+    if (!product)
+      throw ApiError.notFound('Product not found', 'PRODUCT_NOT_FOUND');
     return product;
   },
 
-  async create(data,imageBuffer) {
+  async create(data, imageBuffer) {
     const sku = data.sku.toUpperCase();
     const exists = await prisma.product.findUnique({ where: { sku } });
-    if (exists) throw ApiError.conflict(
-      'SKU already exists',
-      'DUPLICATE_SKU'
-    );
+    if (exists)
+      throw ApiError.conflict('SKU already exists', 'DUPLICATE_SKU');
 
     // Validate category
     const category = await prisma.category.findUnique({
-       where:{id: data.categoryId}, 
+      where: { id: data.categoryId },
     });
-    if(!category) throw ApiError.badRequest(
-      'Category not found',
-      'CATEGORY_NOT_FOUND'
-    )
+    if (!category)
+      throw ApiError.badRequest('Category not found', 'CATEGORY_NOT_FOUND');
 
-    // Upload image if provided 
+    // Upload image if provided
     let imageUrl = null;
-    let imagePublicId = null; 
-    if(imageBuffer) {
+    let imagePublicId = null;
+    if (imageBuffer) {
       const uploaded = await uploadService.uploadImage(imageBuffer);
       imageUrl = uploaded?.url;
       imagePublicId = uploaded?.publicId;
     }
 
     // Use a transaction to create product AND log initial stock
-    return prisma.$transaction(async(tx)=>{
+    return prisma.$transaction(async (tx) => {
+      // ★ REMOVED: price
       const product = await tx.product.create({
-        data: { 
-          name:data.name,
-          sku, 
-          categoryId:data.categoryId,
-          price: parseFloat(data.price),
-          costPrice:parseFloat(data.costPrice ?? '0'),
+        data: {
+          name: data.name,
+          sku,
+          categoryId: data.categoryId,
+          costPrice: parseFloat(data.costPrice ?? '0'),
           quantity: parseInt(data.quantity, 10),
           lowStockThreshold: parseInt(data.lowStockThreshold || '10', 10),
-          description:data.description || null, 
+          description: data.description || null,
           imageUrl,
-          imagePublicId
+          imagePublicId,
         },
-        include: {category:true},
+        include: { category: true },
       });
 
       // Log initial stock
-      if(product.quantity > 0){
+      if (product.quantity > 0) {
         await tx.stockMovement.create({
-          data:{
+          data: {
             productId: product.id,
-            quantity:product.quantity,
-            type:'initial',
-            unitCost:product.costPrice,
-            unitPrice:product.price,
-            notes:'Initial stock',
-          }
-        })
+            quantity: product.quantity,
+            type: 'initial',
+            unitCost: product.costPrice,
+            unitPrice: 0, // ★ No selling price known yet
+            notes: 'Initial stock',
+          },
+        });
       }
       return product;
-      
     });
-    // return prisma.product.create({
-    //   data: { 
-    //     name:data.name,
-    //     sku, 
-    //     categoryId:data.categoryId,
-    //     price: parseFloat(data.price),
-    //     costPrice:parseFloat(data.costPrice ?? '0'),
-    //     quantity: parseInt(data.quantity, 10),
-    //     lowStockThreshold: parseInt(data.lowStockThreshold || '10', 10),
-    //     description:data.description || null, 
-    //     imageUrl,
-    //     imagePublicId
-    //    },
-    //    include: {category:true},
-    // });
   },
 
   async update(id, data, imageBuffer) {
@@ -125,22 +103,21 @@ export const productService = {
 
     if (data.sku) data.sku = data.sku.toUpperCase();
 
-    if(data.categoryId){
+    if (data.categoryId) {
       const cat = await prisma.category.findUnique({
-        where:{id:data.categoryId},
+        where: { id: data.categoryId },
       });
-      if(!cat){
-        throw ApiError.badRequest('Category not found','CATEGORY_NOT_FOUND');
+      if (!cat) {
+        throw ApiError.badRequest('Category not found', 'CATEGORY_NOT_FOUND');
       }
     }
 
     // handle image
     let imageUrl = existing.imageUrl;
-    let imagePublicId= existing.imagePublicId;
+    let imagePublicId = existing.imagePublicId;
 
-    if(imageBuffer){
-      // Delete old image
-      if(existing.imagePublicId){
+    if (imageBuffer) {
+      if (existing.imagePublicId) {
         await uploadService.deleteImage(existing.imagePublicId);
       }
       const uploaded = await uploadService.uploadImage(imageBuffer);
@@ -148,12 +125,11 @@ export const productService = {
       imagePublicId = uploaded?.publicId;
     }
 
-    // Build update payload (convert numeric fields)
+    // Build update payload
     const updateData = {};
     if (data.name !== undefined) updateData.name = data.name;
     if (data.sku !== undefined) updateData.sku = data.sku;
     if (data.categoryId !== undefined) updateData.categoryId = data.categoryId;
-    if (data.price !== undefined) updateData.price = parseFloat(data.price);
     if (data.costPrice !== undefined) updateData.costPrice = parseFloat(data.costPrice);
     if (data.quantity !== undefined) updateData.quantity = parseInt(data.quantity, 10);
     if (data.lowStockThreshold !== undefined)
@@ -163,62 +139,38 @@ export const productService = {
       updateData.imageUrl = imageUrl;
       updateData.imagePublicId = imagePublicId;
     }
-    
-
-    // return prisma.product.update({ 
-    //   where: { id }, 
-    //   data: updateData,
-    //   include: {category:true}, 
-    // });
-
-
 
     // wrap in a transaction to update product and log stock
-    return prisma.$transaction(async(tx)=>{
-      // check if quantity is changing to log a movement
+    return prisma.$transaction(async (tx) => {
       const newQty = data.quantity !== undefined ? parseInt(data.quantity, 10) : existing.quantity;
       const qtyDiff = newQty - existing.quantity;
 
-      if(qtyDiff !== 0){
+      if (qtyDiff !== 0) {
         await tx.stockMovement.create({
-          data:{
-            productId:id, 
-            quantity:qtyDiff, 
-            type:qtyDiff > 0 ? 'purchase' : 'adjustment',
-            unitCost:data.costPrice !== undefined ? parseInt(data.costPrice) : existing.costPrice, 
-            unitPrice: data.price !== undefined ? parseInt(data.price) : existing.price,
-            notes:'Manual stock update via product edit',
-          }
-        })
+          data: {
+            productId: id,
+            quantity: qtyDiff,
+            type: qtyDiff > 0 ? 'purchase' : 'adjustment',
+            unitCost: data.costPrice !== undefined ? parseFloat(data.costPrice) : existing.costPrice,
+            unitPrice: 0, // ★ No selling price here
+            notes: 'Manual stock update via product edit',
+          },
+        });
       }
 
-      // update the product 
       return tx.product.update({
-        where:{id},
-        data:updateData,
-        include:{category: true}, 
+        where: { id },
+        data: updateData,
+        include: { category: true },
       });
     });
-
-
   },
 
   async delete(id) {
     const product = await productService.getById(id);
-
-    // Delete image from cloudinary if it exists
-    if(product.imagePublicId){
+    if (product.imagePublicId) {
       await uploadService.deleteImage(product.imagePublicId);
     }
     return prisma.product.delete({ where: { id } });
   },
 };
-
-
-
-
-
-
-
-
-

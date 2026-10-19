@@ -1,5 +1,6 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
+import { ApiError } from '../utils/ApiError.js';
 import { productService } from '../services/product.service.js';
 
 export const productController = {
@@ -10,48 +11,56 @@ export const productController = {
     ApiResponse.ok(res, await productService.getById(req.params.id))
   ),
 
-  // create: asyncHandler(async (req, res) =>
-  //   ApiResponse.created(res, await productService.create(req.body), 'Product created')
-  // ),
-  create:asyncHandler(async(req,res)=>{
-    // multipart/form-data -> all fields come in as strings
+  create: asyncHandler(async (req, res) => {
     const {
-      name,sku,categoryId, price, costPrice, quantity, lowStockThreshold, description} = req.body;
+      name, sku, categoryId, costPrice, quantity,
+      lowStockThreshold, description,
+    } = req.body;
 
-    if(!name || !sku || !categoryId || !price || !quantity){
-      throw ApiError.badRequest(
-        'Missing required fields: name, sku, categoryId, price, quantity',
-        'MISSING_FIELDS'
-      );
-    }
-
+    const validationErrors = [];
+    if (!name) validationErrors.push({ field: 'name', message: 'Name required' });
+    if (!sku) validationErrors.push({ field: 'sku', message: 'SKU required' });
+    if (!categoryId) validationErrors.push({ field: 'categoryId', message: 'Category required' });
+    
     const costNum = parseFloat(costPrice);
     if (isNaN(costNum) || costNum < 0) {
-      validationErrors.push({
-        field: 'costPrice',
-        message: `Cost price must be a non-negative number, got "${costPrice}"`,
-      });
+      validationErrors.push({ field: 'costPrice', message: 'Valid cost price required' });
+    }
+
+    const qtyNum = parseInt(quantity, 10);
+    if (isNaN(qtyNum) || qtyNum < 0) {
+      validationErrors.push({ field: 'quantity', message: 'Valid quantity required' });
+    }
+
+    if (validationErrors.length > 0) {
+      throw ApiError.badRequest('Validation failed', 'VALIDATION_ERROR', validationErrors);
     }
 
     const product = await productService.create(
-      { 
-        name, sku, categoryId, price, costPrice:costNum, quantity, lowStockThreshold, description },
+      {
+        name: name.trim(),
+        sku: sku.toUpperCase().trim(),
+        categoryId,
+        costPrice: costNum,
+        quantity: qtyNum,
+        lowStockThreshold: lowStockThreshold ? parseInt(lowStockThreshold, 10) : 10,
+        description: description || null,
+      },
       req.file?.buffer
     );
 
     return ApiResponse.created(res, product, 'Product created');
   }),
 
-  update: asyncHandler(async (req, res) =>{
+  update: asyncHandler(async (req, res) => {
     const product = await productService.update(
-      req.params.id, 
+      req.params.id,
       req.body,
-      req.file?.buffer 
+      req.file?.buffer
     );
-
     return ApiResponse.ok(res, product, 'Product updated');
   }),
-  
+
   delete: asyncHandler(async (req, res) => {
     await productService.delete(req.params.id);
     return ApiResponse.noContent(res);
