@@ -9,7 +9,10 @@ export const requireAuth = async (req, res, next) => {
     const [scheme, token] = header.split(' ');
 
     if (scheme !== 'Bearer' || !token) {
-      throw ApiError.unauthorized('Missing or invalid Authorization header','MISSING_TOKEN');
+      throw ApiError.unauthorized(
+        'Missing or invalid Authorization header',
+        'MISSING_TOKEN'
+      );
     }
 
     const payload = jwt.verify(token, env.jwt.secret);
@@ -27,7 +30,7 @@ export const requireAuth = async (req, res, next) => {
     }
 
     const { password, ...safe } = user;
-    req.user = safe;
+    req.user = { ...safe, sub: safe.id };
     next();
   } catch (err) {
     if (err.name === 'JsonWebTokenError')
