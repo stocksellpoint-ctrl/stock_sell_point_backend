@@ -441,8 +441,12 @@ export const productService = {
   // ═══════════════════════════════════════════════════════════
   // Delete product (scoped by ownerId)
   // ═══════════════════════════════════════════════════════════
-  async delete(id, ownerId) {
-    const product = await productService.getById(id, ownerId); // throws if not found / not owned
+  async delete(id) {
+    const product = await prisma.product.findUnique({where:{id}}); // throws if not found / not owned
+
+    if (!product) {
+      throw ApiError.notFound('Product not found', 'PRODUCT_NOT_FOUND');
+    }
 
     if (product.imagePublicId) {
       await uploadService.deleteImage(product.imagePublicId);

@@ -212,7 +212,15 @@ export const productController = {
       throw ApiError.unauthorized('Authentication required', 'AUTH_REQUIRED');
     }
 
-    await productService.delete(req.params.id, ownerId);
+    // Only admins can delete others' products
+    if (req.user.role !== 'admin') {
+      // owners can still delete their own
+      const product = await productService.getById(req.params.id, req.user.sub);
+      await productService.delete(req.params.id);
+      return ApiResponse.noContent(res);
+    }
+
+    await productService.delete(req.params.id);
     return ApiResponse.noContent(res);
   }),
 };
