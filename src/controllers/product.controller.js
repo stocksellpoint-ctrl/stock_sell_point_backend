@@ -197,7 +197,7 @@ export const productController = {
       req.params.id,
       req.body,
       req.file?.buffer,
-      ownerId // ★ pass ownerId so the service can scope the lookup
+    
     );
 
     return ApiResponse.ok(res, product, 'Product updated');

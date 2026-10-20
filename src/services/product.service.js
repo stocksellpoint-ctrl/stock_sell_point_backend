@@ -341,8 +341,11 @@ export const productService = {
   // ═══════════════════════════════════════════════════════════
   // Update product (scoped by ownerId)
   // ═══════════════════════════════════════════════════════════
-  async update(id, data, imageBuffer, ownerId) {
-    const existing = await productService.getById(id, ownerId); // throws if not found
+  async update(id, data, imageBuffer) {
+    const existing = await prisma.product.findUnique({
+      where:{id},
+      include:{category:true},
+    }) // throws if not found
 
     if (data.sku) data.sku = String(data.sku).trim().toUpperCase();
 
