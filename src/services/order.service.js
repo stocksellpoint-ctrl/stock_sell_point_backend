@@ -197,6 +197,9 @@ import { ApiError } from '../utils/ApiError.js';
 
 
 export const orderService = {
+  // ═══════════════════════════════════════════════════════════
+  // LIST — own orders (or all for admins)
+  // ═══════════════════════════════════════════════════════════
   async list({ search, status, page = 1, limit = 50, ownerId, isAdmin = false } = {}) {
     page = parseInt(page, 10) || 1;
     limit = parseInt(limit, 10) || 50;
@@ -225,6 +228,9 @@ export const orderService = {
     return { items, total, page, limit };
   },
 
+  // ═══════════════════════════════════════════════════════════
+  // GET ONE — owner OR admin
+  // ═══════════════════════════════════════════════════════════
   async getById(id, ownerId, isAdmin = false) {
     const order = await prisma.order.findFirst({
       where: { id, ...(isAdmin ? {} : { ownerId }) },
@@ -236,29 +242,172 @@ export const orderService = {
     return order;
   },
 
+  // ═══════════════════════════════════════════════════════════
+  // CREATE — full validation, stock decrement, movement logging
+  //          and ownerId on both Order and StockMovement
+  // ═══════════════════════════════════════════════════════════
   async create(data) {
     if (!data.ownerId) {
       throw ApiError.badRequest('ownerId is required', 'OWNER_ID_REQUIRED');
     }
-    // …validations, stock decrements, etc.
-    // When creating the order, set ownerId from data.ownerId
+    if (!data.customerId) {
+      throw ApiError.badRequest('customerId is required', 'MISSING_CUSTOMER');
+    }
+    if (!Array.isArray(data.items) || data.items.length === 0) {
+      throw ApiError.badRequest('items are required', 'MISSING_ITEMS');
+    }
+
     return prisma.$transaction(async (tx) => {
-      const order = await tx.order.create({
-        data: {
-          // …other fields
-          ownerId: data.ownerId,
-        },
+      // ── Customer must belong to the caller ──────────────
+      const customer = await tx.customer.findFirst({
+        where: { id: data.customerId, ownerId: data.ownerId },
       });
-      // …stock movement logging, etc.
-      return order;
+      if (!customer) {
+        throw ApiError.badRequest(
+          'Customer not found for this user',
+          'CUSTOMER_NOT_FOUND'
+        );
+      }
+
+      const itemsWithCost = [];
+      let subtotal = 0;
+      let totalDiscount = 0;
+
+      // ── Validate each line item ─────────────────────────
+      for (const item of data.items) {
+        const qty = Number(item.quantity);
+        const sellingPrice = Number(item.sellingPrice);
+        const rawDiscValue = Number(item.discountValue ?? 0);
+        const discType = item.discountType || 'none';
+
+        if (!Number.isFinite(qty) || qty <= 0) {
+          throw ApiError.badRequest(
+            `Invalid quantity for ${item.productName || 'item'}`,
+            'INVALID_QUANTITY'
+          );
+        }
+        if (!Number.isFinite(sellingPrice) || sellingPrice <= 0) {
+          throw ApiError.badRequest(
+            `Invalid selling price for ${item.productName || 'item'}`,
+            'INVALID_PRICE'
+          );
+        }
+
+        // ★ Product must belong to the caller
+        const product = await tx.product.findFirst({
+          where: { id: item.productId, ownerId: data.ownerId },
+        });
+        if (!product) {
+          throw ApiError.badRequest(
+            `Product not found: ${item.productId}`,
+            'PRODUCT_NOT_FOUND'
+          );
+        }
+        if (product.quantity < qty) {
+          throw ApiError.badRequest(
+            `Insufficient stock for ${product.name} ` +
+            `(have ${product.quantity}, need ${qty})`,
+            'INSUFFICIENT_STOCK'
+          );
+        }
+
+        // ── Per-item discount on SELLING price ──────────
+        let dt = discType;
+        let dv = rawDiscValue;
+        let unitDiscount = 0;
+
+        if (dt === 'percent') {
+          dv = Math.max(0, Math.min(100, dv));
+          unitDiscount = (sellingPrice * dv) / 100;
+        } else if (dt === 'amount') {
+          dv = Math.max(0, Math.min(sellingPrice, dv));
+          unitDiscount = dv;
+        } else {
+          dt = 'none';
+          dv = 0;
+          unitDiscount = 0;
+        }
+
+        unitDiscount = Number(unitDiscount.toFixed(2));
+        const lineSubtotal = sellingPrice * qty;
+        const lineDiscount = unitDiscount * qty;
+
+        subtotal += lineSubtotal;
+        totalDiscount += lineDiscount;
+
+        // Decrement stock
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { quantity: product.quantity - qty },
+        });
+
+        // ★ Every value is concrete — never null
+        itemsWithCost.push({
+          productId: String(item.productId),
+          productName: String(product.name),
+          categoryId: product.categoryId ? String(product.categoryId) : '',
+          quantity: qty,
+          sellingPrice: sellingPrice,
+          costPrice: Number(product.costPrice) || 0,
+          discountType: dt,
+          discountValue: dv,
+          discountAmount: unitDiscount,
+        });
+      }
+
+      // ── Final totals ────────────────────────────────────
+      subtotal = Number(subtotal.toFixed(2));
+      totalDiscount = Number(totalDiscount.toFixed(2));
+      const total = Number((subtotal - totalDiscount).toFixed(2));
+
+      if (!Number.isFinite(total) || total < 0) {
+        throw ApiError.internal(
+          'Could not compute order total',
+          'TOTAL_COMPUTE_ERROR'
+        );
+      }
+
+      // ── Create the order ────────────────────────────────
+      const createdOrder = await tx.order.create({
+        data: {
+          customerId: String(customer.id),
+          customerName: customer.name,
+          customerPhone: customer.phone ?? '',
+          items: itemsWithCost,
+          subtotal,
+          discountAmount: totalDiscount,
+          total,
+          status: data.status || 'pending',
+          notes: data.notes ?? null,
+          ownerId: data.ownerId,                     // ★ required
+        },
+        include: { items: true, customer: true },
+      });
+
+      // ── Stock ledger ────────────────────────────────────
+      for (const item of itemsWithCost) {
+        await tx.stockMovement.create({
+          data: {
+            productId: String(item.productId),
+            quantity: -item.quantity,
+            type: 'sale',
+            unitCost: item.costPrice,
+            unitPrice: item.sellingPrice,
+            referenceId: String(createdOrder.id),
+            notes: 'Sale',
+            ownerId: data.ownerId,                    // ★ required
+          },
+        });
+      }
+
+      return createdOrder;
     });
   },
 
   // ═══════════════════════════════════════════════════════════
-  // UPDATE STATUS — owner OR admin (uses getById for the check)
+  // UPDATE STATUS — owner OR admin
   // ═══════════════════════════════════════════════════════════
   async updateStatus(id, status, ownerId, isAdmin = false) {
-    // getById already enforces ownership + throws 404 if not found
     await orderService.getById(id, ownerId, isAdmin);
 
     return prisma.order.update({
@@ -268,9 +417,42 @@ export const orderService = {
     });
   },
 
+  // ═══════════════════════════════════════════════════════════
+  // DELETE — restore stock then delete the order
+  //          (only the owner, or an admin, can do this)
+  // ═══════════════════════════════════════════════════════════
   async delete(id, ownerId, isAdmin = false) {
-    const order = await orderService.getById(id, ownerId, isAdmin);
-    return prisma.order.delete({ where: { id: order.id } });
-  },
+    const existing = await orderService.getById(id, ownerId, isAdmin);
 
+    return prisma.$transaction(async (tx) => {
+      // Restore stock + log the reversal
+      for (const item of existing.items) {
+        try {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: { quantity: { increment: item.quantity } },
+          });
+
+          await tx.stockMovement.create({
+            data: {
+              productId: String(item.productId),
+              quantity: item.quantity,
+              type: 'adjustment',
+              unitCost: item.costPrice ?? 0,
+              unitPrice: item.sellingPrice ?? 0,
+              referenceId: `DELETED-${id}`,
+              notes: 'Order cancelled/restored',
+              ownerId: existing.ownerId,           // ★ keep same owner
+            },
+          });
+        } catch (err) {
+          console.warn(
+            `Could not restore ${item.productName} (deleted product?)`
+          );
+        }
+      }
+
+      return tx.order.delete({ where: { id } });
+    });
+  },
 };
