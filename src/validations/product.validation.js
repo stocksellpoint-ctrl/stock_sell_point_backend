@@ -2,9 +2,23 @@ import { z } from 'zod';
 
 const productBody = z.object({
   name: z.string().min(1).max(200),
-  sku: z.string().min(2).max(40),
+  // ★ SKU is optional. Accepts '', null, undefined; uppercases when present.
+  sku: z
+    .string()
+    .trim()
+    .min(2)
+    .max(40)
+    .optional()
+    .nullable()
+    .or(z.literal(''))
+    .transform((v) => {
+      if (v === undefined || v === null) return null;
+      const s = String(v).trim();
+      return s.length === 0 ? null : s.toUpperCase();
+    }),
   category: z.string().min(1).max(80),
-  price: z.number().nonnegative(),
+  // ★ Use `coerce` because multipart fields arrive as strings ("5.99").
+  costPrice: z.coerce.number().nonnegative(),
   quantity: z.number().int().nonnegative(),
   lowStockThreshold: z.number().int().nonnegative().optional(),
   imagePath: z.string().nullable().optional(),

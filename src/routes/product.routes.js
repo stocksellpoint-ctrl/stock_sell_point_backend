@@ -16,8 +16,8 @@ productRoutes.get('/:id', productController.getById);
 productRoutes.post('/', uploadImage, productController.create);
 productRoutes.put('/:id', uploadImage, productController.update);
 
-// productRoutes.post('/', validate(createProductSchema), productController.create);
-// productRoutes.put('/:id', validate(updateProductSchema), productController.update);
+// productRoutes.post('/',uploadImage, validate(createProductSchema), productController.create);
+// productRoutes.put('/:id',uploadImage, validate(updateProductSchema), productController.update);
 
 
 productRoutes.delete('/:id', productController.delete);
