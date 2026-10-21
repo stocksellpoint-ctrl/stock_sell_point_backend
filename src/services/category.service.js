@@ -217,16 +217,23 @@ export const categoryService = {
         );
       }
     }
-
-    return prisma.category.create({
-      data: {
-        name: String(name).trim(),
-        slug,
-        description: description?.trim() || null,
-        parentId: parentId || null,
-        ownerId,
-      },
-    });
+    try {
+      return prisma.category.create({
+        data: {
+          name: String(name).trim(),
+          slug,
+          description: description?.trim() || null,
+          parentId: parentId || null,
+          ownerId,
+        },
+      });
+    } catch (error) {
+      if(error.code === 'P2002'){
+        throw ApiError.conflict("Category already exists",'CATEGORY_EXISTS');
+      }
+      throw error;
+    }
+    
   },
 
   // ═══════════════════════════════════════════════════════════
@@ -245,9 +252,8 @@ export const categoryService = {
       updateData.name = trimmed;
       updateData.slug = slugify(trimmed);
 
-      // If slug changed, check uniqueness within this owner's namespace
-      if (updateData.slug !== undefined) {
-        const conflict = await prisma.category.findFirst({
+      // Pre-check for a friendly error
+      const conflict = await prisma.category.findFirst({
           where: {
             ownerId,               // ← always the category's own owner
             slug: updateData.slug,
@@ -260,7 +266,6 @@ export const categoryService = {
             'CATEGORY_EXISTS'
           );
         }
-      }
     }
 
     if (data.description !== undefined) {
@@ -291,10 +296,21 @@ export const categoryService = {
       updateData.parentId = data.parentId || null;
     }
 
-    return prisma.category.update({
-      where: { id },
-      data: updateData,
-    });
+    try {
+      return prisma.category.update({
+        where: { id },
+        data: updateData,
+      });
+    } catch (err) {
+      if(err.code === 'P2002'){
+        throw ApiError.conflict(
+          'A category with this name alreay exists',
+          'CATEGORY_EXISTS'
+        )
+      }
+      throw err;
+    }
+    
   },
 
   // ═══════════════════════════════════════════════════════════
