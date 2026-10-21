@@ -8,6 +8,13 @@ function ownerWhere(ownerId, isAdmin) {
   return isAdmin ? {} : { ownerId };
 }
 
+// Normalize an optional SKU: '' or undefined → null, otherwise uppercase trim.
+function normalizeSku(sku) {
+  if (sku === undefined || sku === null) return null;
+  const trimmed = String(sku).trim();
+  return trimmed ? trimmed.toUpperCase() : null;
+}
+
 
 // Here everyone can see everything
 // export const productService = {
@@ -353,14 +360,14 @@ export const productService = {
         'OWNER_ID_REQUIRED'
       );
     }
-    if (!data.name || !data.sku || !data.categoryId) {
+    if (!data.name || !data.categoryId) {
       throw ApiError.badRequest(
-        'name, sku and categoryId are required',
+        'name and categoryId are required',
         'MISSING_FIELDS'
       );
     }
 
-    const sku = String(data.sku).trim().toUpperCase();
+    const sku = normalizeSku(data.sku);
 
     const qty = parseInt(data.quantity ?? '0', 10);
     if (Number.isNaN(qty) || qty < 0) {
@@ -374,16 +381,16 @@ export const productService = {
 
     const lowStockThreshold = parseInt(data.lowStockThreshold ?? '10', 10);
 
-    // SKU must be unique per-owner (not globally — two tenants can share SKUs)
-    const exists = await prisma.product.findFirst({
-      where: { sku, ownerId: data.ownerId },
-    });
-    if (exists) {
-      throw ApiError.conflict('SKU already exists', 'DUPLICATE_SKU');
-    }
+    // // SKU must be unique per-owner (not globally — two tenants can share SKUs)
+    // const exists = await prisma.product.findFirst({
+    //   where: { sku, ownerId: data.ownerId },
+    // });
+    // if (exists) {
+    //   throw ApiError.conflict('SKU already exists', 'DUPLICATE_SKU');
+    // }
 
-    const category = await prisma.category.findUnique({
-      where: { id: data.categoryId },
+    const category = await prisma.category.findFirst({
+      where: { id: data.categoryId, ownerId:data.ownerId },
     });
     if (!category) {
       throw ApiError.badRequest('Category not found', 'CATEGORY_NOT_FOUND');
@@ -398,10 +405,11 @@ export const productService = {
     }
 
     return prisma.$transaction(async (tx) => {
+
       const product = await tx.product.create({
         data: {
           name: data.name,
-          sku,
+          sku,              // may be null
           categoryId: data.categoryId,
           costPrice,
           quantity: qty,
@@ -437,11 +445,13 @@ export const productService = {
   async update(id, data, imageBuffer, ownerId, isAdmin = false) {
     const existing = await productService.getById(id, ownerId, isAdmin);
 
-    if (data.sku) data.sku = String(data.sku).trim().toUpperCase();
+    if (data.sku !== undefined){
+      data.sku = normalizeSku(data.sku);
+    } 
 
     if (data.categoryId) {
-      const cat = await prisma.category.findUnique({
-        where: { id: data.categoryId },
+      const cat = await prisma.category.findFirst({
+        where: { id: data.categoryId , ownerId:existing.ownerId},
       });
       if (!cat) {
         throw ApiError.badRequest('Category not found', 'CATEGORY_NOT_FOUND');
