@@ -218,12 +218,11 @@ export const productController = {
     const ownerId = req.user?.sub;
 
     const validationErrors = [];
+
     if (!name || !String(name).trim()) {
       validationErrors.push({ field: 'name', message: 'Name required' });
     }
-    if (!sku || !String(sku).trim()) {
-      validationErrors.push({ field: 'sku', message: 'SKU required' });
-    }
+    
     if (!categoryId) {
       validationErrors.push({ field: 'categoryId', message: 'Category required' });
     }
@@ -249,7 +248,7 @@ export const productController = {
     const product = await productService.create(
       {
         name: String(name).trim(),
-        sku: String(sku).toUpperCase().trim(),
+        sku: sku && String(sku).trim() ? String(sku).trim() : null,
         categoryId,
         costPrice: costNum,
         quantity: qtyNum,
