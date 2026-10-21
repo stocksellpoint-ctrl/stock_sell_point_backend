@@ -1,5 +1,14 @@
-// import { prisma } from '../config/database.js';
 
+import { prisma } from '../config/database.js';
+
+// Shared owner-scope helper — returns {} for admins (no filter),
+// { ownerId } for everyone else.
+function ownerWhere(ownerId, isAdmin) {
+  return isAdmin ? {} : { ownerId };
+}
+
+
+// Here everyone can see everything
 // export const reportService = {
 //   // ═══════════════════════════════════════════════════════════
 //   // 1. INVENTORY REPORT (Current Snapshot)
@@ -10,12 +19,12 @@
 //       orderBy: { name: 'asc' },
 //     });
 
+//     // ★ Added 0 as initial value for empty arrays
 //     const totalItems = products.reduce((s, p) => s + p.quantity, 0);
     
-//     // ★ Only Cost Value is known in inventory now
 //     const totalCostValue = products.reduce(
 //       (s, p) => s + (p.costPrice ?? 0) * p.quantity,
-//       0
+//       0 // ★ Added 0
 //     );
 
 //     const lowStock = products
@@ -87,9 +96,7 @@
 //       totalDiscount += order.discountAmount ?? 0;
 
 //       for (const item of order.items) {
-//         // ★ Revenue based on Selling Price
 //         const itemRevenue = item.sellingPrice * item.quantity;
-//         // ★ Cost based on Cost Price
 //         const itemCost = (item.costPrice ?? 0) * item.quantity;
 //         const itemProfit = itemRevenue - itemCost;
 
@@ -119,6 +126,23 @@
 
 //     // ── Historical Closing Inventory ──────────────
 //     const products = await prisma.product.findMany();
+    
+//     // ★ If no products exist, safely return 0
+//     if (products.length === 0) {
+//       return {
+//         period: { from: startDate.toISOString(), to: endDate.toISOString() },
+//         totals: {
+//           revenue: 0, cost: 0, profit: 0, margin: 0,
+//           orders: 0, itemsSold: 0, totalDiscount: 0,
+//         },
+//         closingInventory: {
+//           stockCostValue: 0, totalItems: 0,
+//         },
+//         daily: [],
+//         topProducts: [],
+//       };
+//     }
+
 //     const movementsAfter = await prisma.stockMovement.groupBy({
 //       by: ['productId'],
 //       where: { createdAt: { gt: endDate } },
@@ -171,31 +195,33 @@
 
 
 
-import { prisma } from '../config/database.js';
-
+// Here only owner or admin can see every product or delete
 export const reportService = {
   // ═══════════════════════════════════════════════════════════
   // 1. INVENTORY REPORT (Current Snapshot)
   // ═══════════════════════════════════════════════════════════
-  async inventoryReport() {
+  async inventoryReport({ ownerId, isAdmin = false } = {}) {
     const products = await prisma.product.findMany({
+      where: ownerWhere(ownerId, isAdmin),
       include: { category: true },
       orderBy: { name: 'asc' },
     });
 
-    // ★ Added 0 as initial value for empty arrays
     const totalItems = products.reduce((s, p) => s + p.quantity, 0);
-    
+
     const totalCostValue = products.reduce(
       (s, p) => s + (p.costPrice ?? 0) * p.quantity,
-      0 // ★ Added 0
+      0
     );
 
     const lowStock = products
       .filter((p) => p.quantity <= p.lowStockThreshold)
       .map((p) => ({
-        id: p.id, name: p.name, sku: p.sku,
-        quantity: p.quantity, lowStockThreshold: p.lowStockThreshold,
+        id: p.id,
+        name: p.name,
+        sku: p.sku,
+        quantity: p.quantity,
+        lowStockThreshold: p.lowStockThreshold,
       }));
 
     const byCategory = {};
@@ -203,7 +229,10 @@ export const reportService = {
       const catName = p.category?.name ?? 'Uncategorized';
       if (!byCategory[catName]) {
         byCategory[catName] = {
-          categoryName: catName, products: 0, quantity: 0, costValue: 0,
+          categoryName: catName,
+          products: 0,
+          quantity: 0,
+          costValue: 0,
         };
       }
       byCategory[catName].products += 1;
@@ -218,7 +247,9 @@ export const reportService = {
         costValue: Number(totalCostValue.toFixed(2)),
         lowStockCount: lowStock.length,
       },
-      categories: Object.values(byCategory).sort((a, b) => b.costValue - a.costValue),
+      categories: Object.values(byCategory).sort(
+        (a, b) => b.costValue - a.costValue
+      ),
       lowStock,
     };
   },
@@ -226,13 +257,15 @@ export const reportService = {
   // ═══════════════════════════════════════════════════════════
   // 2. PROFIT REPORT (Historical)
   // ═══════════════════════════════════════════════════════════
-  async profitReport({ from, to }) {
+  async profitReport({ from, to, ownerId, isAdmin = false } = {}) {
     const startDate = new Date(from);
     const endDate = new Date(to);
     endDate.setHours(23, 59, 59, 999);
 
+    // ── Orders in the period (owner-scoped unless admin) ──────
     const orders = await prisma.order.findMany({
       where: {
+        ...ownerWhere(ownerId, isAdmin),
         createdAt: { gte: startDate, lte: endDate },
         status: { not: 'cancelled' },
       },
@@ -244,14 +277,20 @@ export const reportService = {
     let totalItems = 0;
     let totalDiscount = 0;
 
-    const dailyMap = {}; 
-    const productMap = {}; 
+    const dailyMap = {};
+    const productMap = {};
 
     for (const order of orders) {
       const dayKey = order.createdAt.toISOString().slice(0, 10);
       if (!dailyMap[dayKey]) {
         dailyMap[dayKey] = {
-          date: dayKey, revenue: 0, cost: 0, profit: 0, orders: 0, items: 0, discount: 0,
+          date: dayKey,
+          revenue: 0,
+          cost: 0,
+          profit: 0,
+          orders: 0,
+          items: 0,
+          discount: 0,
         };
       }
       dailyMap[dayKey].revenue += order.total;
@@ -274,8 +313,12 @@ export const reportService = {
 
         if (!productMap[item.productId]) {
           productMap[item.productId] = {
-            productId: item.productId, productName: item.productName,
-            quantity: 0, revenue: 0, cost: 0, profit: 0,
+            productId: item.productId,
+            productName: item.productName,
+            quantity: 0,
+            revenue: 0,
+            cost: 0,
+            profit: 0,
           };
         }
         productMap[item.productId].quantity += item.quantity;
@@ -288,28 +331,45 @@ export const reportService = {
     const totalProfit = totalRevenue - totalCost;
     const margin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
 
-    // ── Historical Closing Inventory ──────────────
-    const products = await prisma.product.findMany();
-    
-    // ★ If no products exist, safely return 0
+    // ── Closing inventory as of endDate (owner-scoped) ────────
+    const products = await prisma.product.findMany({
+      where: ownerWhere(ownerId, isAdmin),
+    });
+
     if (products.length === 0) {
       return {
-        period: { from: startDate.toISOString(), to: endDate.toISOString() },
+        period: {
+          from: startDate.toISOString(),
+          to: endDate.toISOString(),
+        },
         totals: {
-          revenue: 0, cost: 0, profit: 0, margin: 0,
-          orders: 0, itemsSold: 0, totalDiscount: 0,
+          revenue: 0,
+          cost: 0,
+          profit: 0,
+          margin: 0,
+          orders: 0,
+          itemsSold: 0,
+          totalDiscount: 0,
         },
         closingInventory: {
-          stockCostValue: 0, totalItems: 0,
+          stockCostValue: 0,
+          totalItems: 0,
         },
         daily: [],
         topProducts: [],
       };
     }
 
+    // Stock movements after endDate for those products, scoped to
+    // the same owner (unless admin — then all movements for those products).
+    const productIds = products.map((p) => p.id);
+
     const movementsAfter = await prisma.stockMovement.groupBy({
       by: ['productId'],
-      where: { createdAt: { gt: endDate } },
+      where: {
+        createdAt: { gt: endDate },
+        productId: { in: productIds },
+      },
       _sum: { quantity: true },
     });
 
@@ -332,7 +392,10 @@ export const reportService = {
     }
 
     return {
-      period: { from: startDate.toISOString(), to: endDate.toISOString() },
+      period: {
+        from: startDate.toISOString(),
+        to: endDate.toISOString(),
+      },
       totals: {
         revenue: Number(totalRevenue.toFixed(2)),
         cost: Number(totalCost.toFixed(2)),
@@ -346,13 +409,24 @@ export const reportService = {
         stockCostValue: Number(closingStockCostValue.toFixed(2)),
         totalItems: closingTotalItems,
       },
-      daily: Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date)).map((d) => ({
-        ...d, revenue: Number(d.revenue.toFixed(2)), cost: Number(d.cost.toFixed(2)),
-        profit: Number(d.profit.toFixed(2)), discount: Number(d.discount.toFixed(2)),
-      })),
-      topProducts: Object.values(productMap).sort((a, b) => b.profit - a.profit).slice(0, 10).map((p) => ({
-        ...p, revenue: Number(p.revenue.toFixed(2)), cost: Number(p.cost.toFixed(2)), profit: Number(p.profit.toFixed(2)),
-      })),
+      daily: Object.values(dailyMap)
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .map((d) => ({
+          ...d,
+          revenue: Number(d.revenue.toFixed(2)),
+          cost: Number(d.cost.toFixed(2)),
+          profit: Number(d.profit.toFixed(2)),
+          discount: Number(d.discount.toFixed(2)),
+        })),
+      topProducts: Object.values(productMap)
+        .sort((a, b) => b.profit - a.profit)
+        .slice(0, 10)
+        .map((p) => ({
+          ...p,
+          revenue: Number(p.revenue.toFixed(2)),
+          cost: Number(p.cost.toFixed(2)),
+          profit: Number(p.profit.toFixed(2)),
+        })),
     };
   },
 };

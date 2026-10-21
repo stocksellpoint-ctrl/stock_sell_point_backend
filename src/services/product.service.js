@@ -1,15 +1,35 @@
-// import { prisma } from '../config/database.js';
-// import { ApiError } from '../utils/ApiError.js';
-// import { uploadService } from './upload.service.js';
 
+import { prisma } from '../config/database.js';
+import { ApiError } from '../utils/ApiError.js';
+import { uploadService } from './upload.service.js';
+
+// Build the ownership clause shared by every read/write op
+function ownerWhere(ownerId, isAdmin) {
+  return isAdmin ? {} : { ownerId };
+}
+
+
+// Here everyone can see everything
 // export const productService = {
-//   async list({ search, categoryId, subCategoryId, page = 1, limit = 50 } = {}) {
+//   // ═══════════════════════════════════════════════════════════
+//   // List products (scoped by ownerId)
+//   // ═══════════════════════════════════════════════════════════
+//   async list({
+//     search,
+//     categoryId,
+//     subCategoryId,
+//     page = 1,
+//     limit = 50,
+    
+//   } = {}) {
 //     page = parseInt(page, 10) || 1;
 //     limit = parseInt(limit, 10) || 50;
 
 //     const where = {};
+
 //     if (categoryId) where.categoryId = categoryId;
 //     if (subCategoryId) where.subCategoryId = subCategoryId;
+
 //     if (search) {
 //       where.OR = [
 //         { name: { contains: search, mode: 'insensitive' } },
@@ -31,30 +51,76 @@
 //     return { items, total, page, limit };
 //   },
 
-//   async getById(id) {
-//     const product = await prisma.product.findUnique({
-//       where: { id },
+//   // ═══════════════════════════════════════════════════════════
+//   // Get one product (scoped by ownerId)
+//   // ═══════════════════════════════════════════════════════════
+//   async getById(id, ownerId) {
+//     const product = await prisma.product.findFirst({
+//       where: {
+//         id,
+//         ...(ownerId ? { ownerId } : {}),
+//       },
 //       include: { category: true },
 //     });
-//     if (!product)
+//     if (!product) {
 //       throw ApiError.notFound('Product not found', 'PRODUCT_NOT_FOUND');
+//     }
 //     return product;
 //   },
 
+//   // ═══════════════════════════════════════════════════════════
+//   // Create product (ownerId required)
+//   // ═══════════════════════════════════════════════════════════
 //   async create(data, imageBuffer) {
-//     const sku = data.sku.toUpperCase();
-//     const exists = await prisma.product.findUnique({ where: { sku } });
-//     if (exists)
-//       throw ApiError.conflict('SKU already exists', 'DUPLICATE_SKU');
+//     // ── Validation ────────────────────────────────────────────
+//     if (!data.ownerId) {
+//       throw ApiError.badRequest(
+//         'ownerId is required (authenticated user)',
+//         'OWNER_ID_REQUIRED'
+//       );
+//     }
+//     if (!data.name || !data.sku || !data.categoryId) {
+//       throw ApiError.badRequest(
+//         'name, sku and categoryId are required',
+//         'MISSING_FIELDS'
+//       );
+//     }
 
-//     // Validate category
+//     const sku = String(data.sku).trim().toUpperCase();
+
+//     const qty = parseInt(data.quantity ?? '0', 10);
+//     if (Number.isNaN(qty) || qty < 0) {
+//       throw ApiError.badRequest(
+//         'quantity must be a non-negative number',
+//         'INVALID_QUANTITY'
+//       );
+//     }
+
+//     const costPrice = parseFloat(data.costPrice ?? '0');
+//     if (Number.isNaN(costPrice) || costPrice < 0) {
+//       throw ApiError.badRequest(
+//         'costPrice must be a non-negative number',
+//         'INVALID_COST_PRICE'
+//       );
+//     }
+
+//     const lowStockThreshold = parseInt(data.lowStockThreshold ?? '10', 10);
+
+//     // ── Duplicate SKU check ───────────────────────────────────
+//     const exists = await prisma.product.findUnique({ where: { sku } });
+//     if (exists) {
+//       throw ApiError.conflict('SKU already exists', 'DUPLICATE_SKU');
+//     }
+
+//     // ── Validate category ─────────────────────────────────────
 //     const category = await prisma.category.findUnique({
 //       where: { id: data.categoryId },
 //     });
-//     if (!category)
+//     if (!category) {
 //       throw ApiError.badRequest('Category not found', 'CATEGORY_NOT_FOUND');
+//     }
 
-//     // Upload image if provided
+//     // ── Upload image if provided ──────────────────────────────
 //     let imageUrl = null;
 //     let imagePublicId = null;
 //     if (imageBuffer) {
@@ -63,25 +129,27 @@
 //       imagePublicId = uploaded?.publicId;
 //     }
 
-//     // Use a transaction to create product AND log initial stock
+//     // ── Transaction: create product + initial stock movement ──
 //     return prisma.$transaction(async (tx) => {
-//       // ★ REMOVED: price
 //       const product = await tx.product.create({
 //         data: {
 //           name: data.name,
 //           sku,
 //           categoryId: data.categoryId,
-//           costPrice: parseFloat(data.costPrice ?? '0'),
-//           quantity: parseInt(data.quantity, 10),
-//           lowStockThreshold: parseInt(data.lowStockThreshold || '10', 10),
+//           costPrice,
+//           quantity: qty,
+//           lowStockThreshold: Number.isNaN(lowStockThreshold)
+//             ? 10
+//             : lowStockThreshold,
 //           description: data.description || null,
+//           ownerId: data.ownerId, // ★ from req.user.sub
 //           imageUrl,
 //           imagePublicId,
 //         },
 //         include: { category: true },
 //       });
 
-//       // Log initial stock
+//       // Log initial stock — inherit ownerId from the product
 //       if (product.quantity > 0) {
 //         await tx.stockMovement.create({
 //           data: {
@@ -89,19 +157,27 @@
 //             quantity: product.quantity,
 //             type: 'initial',
 //             unitCost: product.costPrice,
-//             unitPrice: 0, // ★ No selling price known yet
+//             unitPrice: 0,
 //             notes: 'Initial stock',
+//             ownerId: product.ownerId, // ★ inherit
 //           },
 //         });
 //       }
+
 //       return product;
 //     });
 //   },
 
+//   // ═══════════════════════════════════════════════════════════
+//   // Update product (scoped by ownerId)
+//   // ═══════════════════════════════════════════════════════════
 //   async update(id, data, imageBuffer) {
-//     const existing = await productService.getById(id); // throws if not found
+//     const existing = await prisma.product.findUnique({
+//       where:{id},
+//       include:{category:true},
+//     }) // throws if not found
 
-//     if (data.sku) data.sku = data.sku.toUpperCase();
+//     if (data.sku) data.sku = String(data.sku).trim().toUpperCase();
 
 //     if (data.categoryId) {
 //       const cat = await prisma.category.findUnique({
@@ -112,7 +188,7 @@
 //       }
 //     }
 
-//     // handle image
+//     // ── Handle image ──────────────────────────────────────────
 //     let imageUrl = existing.imageUrl;
 //     let imagePublicId = existing.imagePublicId;
 
@@ -125,24 +201,49 @@
 //       imagePublicId = uploaded?.publicId;
 //     }
 
-//     // Build update payload
+//     // ── Build update payload ──────────────────────────────────
 //     const updateData = {};
 //     if (data.name !== undefined) updateData.name = data.name;
 //     if (data.sku !== undefined) updateData.sku = data.sku;
 //     if (data.categoryId !== undefined) updateData.categoryId = data.categoryId;
-//     if (data.costPrice !== undefined) updateData.costPrice = parseFloat(data.costPrice);
-//     if (data.quantity !== undefined) updateData.quantity = parseInt(data.quantity, 10);
-//     if (data.lowStockThreshold !== undefined)
+//     if (data.costPrice !== undefined) {
+//       const cp = parseFloat(data.costPrice);
+//       if (Number.isNaN(cp) || cp < 0) {
+//         throw ApiError.badRequest(
+//           'costPrice must be a non-negative number',
+//           'INVALID_COST_PRICE'
+//         );
+//       }
+//       updateData.costPrice = cp;
+//     }
+//     if (data.quantity !== undefined) {
+//       const q = parseInt(data.quantity, 10);
+//       if (Number.isNaN(q) || q < 0) {
+//         throw ApiError.badRequest(
+//           'quantity must be a non-negative number',
+//           'INVALID_QUANTITY'
+//         );
+//       }
+//       updateData.quantity = q;
+//     }
+//     if (data.lowStockThreshold !== undefined) {
 //       updateData.lowStockThreshold = parseInt(data.lowStockThreshold, 10);
-//     if (data.description !== undefined) updateData.description = data.description;
+//     }
+//     if (data.description !== undefined) {
+//       updateData.description = data.description;
+//     }
 //     if (imageUrl) {
 //       updateData.imageUrl = imageUrl;
 //       updateData.imagePublicId = imagePublicId;
 //     }
 
-//     // wrap in a transaction to update product and log stock
+//     // ── Transaction: update product + log stock change ────────
 //     return prisma.$transaction(async (tx) => {
-//       const newQty = data.quantity !== undefined ? parseInt(data.quantity, 10) : existing.quantity;
+//       const newQty =
+//         data.quantity !== undefined
+//           ? parseInt(data.quantity, 10)
+//           : existing.quantity;
+
 //       const qtyDiff = newQty - existing.quantity;
 
 //       if (qtyDiff !== 0) {
@@ -151,9 +252,13 @@
 //             productId: id,
 //             quantity: qtyDiff,
 //             type: qtyDiff > 0 ? 'purchase' : 'adjustment',
-//             unitCost: data.costPrice !== undefined ? parseFloat(data.costPrice) : existing.costPrice,
-//             unitPrice: 0, // ★ No selling price here
+//             unitCost:
+//               data.costPrice !== undefined
+//                 ? parseFloat(data.costPrice)
+//                 : existing.costPrice,
+//             unitPrice: 0,
 //             notes: 'Manual stock update via product edit',
+//             ownerId: existing.ownerId, // ★ FIXED — inherit from product
 //           },
 //         });
 //       }
@@ -166,36 +271,39 @@
 //     });
 //   },
 
+//   // ═══════════════════════════════════════════════════════════
+//   // Delete product (scoped by ownerId)
+//   // ═══════════════════════════════════════════════════════════
 //   async delete(id) {
-//     const product = await productService.getById(id);
+//     const product = await prisma.product.findUnique({where:{id}}); // throws if not found / not owned
+
+//     if (!product) {
+//       throw ApiError.notFound('Product not found', 'PRODUCT_NOT_FOUND');
+//     }
+
 //     if (product.imagePublicId) {
 //       await uploadService.deleteImage(product.imagePublicId);
 //     }
+
 //     return prisma.product.delete({ where: { id } });
 //   },
 // };
 
 
-import { prisma } from '../config/database.js';
-import { ApiError } from '../utils/ApiError.js';
-import { uploadService } from './upload.service.js';
-
+// Here only owner or admin can see products or delete
 export const productService = {
   // ═══════════════════════════════════════════════════════════
-  // List products (scoped by ownerId)
+  // LIST
   // ═══════════════════════════════════════════════════════════
   async list({
-    search,
-    categoryId,
-    subCategoryId,
-    page = 1,
-    limit = 50,
-    
+    search, categoryId, subCategoryId,
+    page = 1, limit = 50,
+    ownerId, isAdmin = false,
   } = {}) {
     page = parseInt(page, 10) || 1;
     limit = parseInt(limit, 10) || 50;
 
-    const where = {};
+    const where = { ...ownerWhere(ownerId, isAdmin) };
 
     if (categoryId) where.categoryId = categoryId;
     if (subCategoryId) where.subCategoryId = subCategoryId;
@@ -222,14 +330,11 @@ export const productService = {
   },
 
   // ═══════════════════════════════════════════════════════════
-  // Get one product (scoped by ownerId)
+  // GET ONE
   // ═══════════════════════════════════════════════════════════
-  async getById(id, ownerId) {
+  async getById(id, ownerId, isAdmin = false) {
     const product = await prisma.product.findFirst({
-      where: {
-        id,
-        ...(ownerId ? { ownerId } : {}),
-      },
+      where: { id, ...ownerWhere(ownerId, isAdmin) },
       include: { category: true },
     });
     if (!product) {
@@ -239,10 +344,9 @@ export const productService = {
   },
 
   // ═══════════════════════════════════════════════════════════
-  // Create product (ownerId required)
+  // CREATE
   // ═══════════════════════════════════════════════════════════
   async create(data, imageBuffer) {
-    // ── Validation ────────────────────────────────────────────
     if (!data.ownerId) {
       throw ApiError.badRequest(
         'ownerId is required (authenticated user)',
@@ -260,29 +364,24 @@ export const productService = {
 
     const qty = parseInt(data.quantity ?? '0', 10);
     if (Number.isNaN(qty) || qty < 0) {
-      throw ApiError.badRequest(
-        'quantity must be a non-negative number',
-        'INVALID_QUANTITY'
-      );
+      throw ApiError.badRequest('quantity must be a non-negative number', 'INVALID_QUANTITY');
     }
 
     const costPrice = parseFloat(data.costPrice ?? '0');
     if (Number.isNaN(costPrice) || costPrice < 0) {
-      throw ApiError.badRequest(
-        'costPrice must be a non-negative number',
-        'INVALID_COST_PRICE'
-      );
+      throw ApiError.badRequest('costPrice must be a non-negative number', 'INVALID_COST_PRICE');
     }
 
     const lowStockThreshold = parseInt(data.lowStockThreshold ?? '10', 10);
 
-    // ── Duplicate SKU check ───────────────────────────────────
-    const exists = await prisma.product.findUnique({ where: { sku } });
+    // SKU must be unique per-owner (not globally — two tenants can share SKUs)
+    const exists = await prisma.product.findFirst({
+      where: { sku, ownerId: data.ownerId },
+    });
     if (exists) {
       throw ApiError.conflict('SKU already exists', 'DUPLICATE_SKU');
     }
 
-    // ── Validate category ─────────────────────────────────────
     const category = await prisma.category.findUnique({
       where: { id: data.categoryId },
     });
@@ -290,7 +389,6 @@ export const productService = {
       throw ApiError.badRequest('Category not found', 'CATEGORY_NOT_FOUND');
     }
 
-    // ── Upload image if provided ──────────────────────────────
     let imageUrl = null;
     let imagePublicId = null;
     if (imageBuffer) {
@@ -299,7 +397,6 @@ export const productService = {
       imagePublicId = uploaded?.publicId;
     }
 
-    // ── Transaction: create product + initial stock movement ──
     return prisma.$transaction(async (tx) => {
       const product = await tx.product.create({
         data: {
@@ -308,18 +405,15 @@ export const productService = {
           categoryId: data.categoryId,
           costPrice,
           quantity: qty,
-          lowStockThreshold: Number.isNaN(lowStockThreshold)
-            ? 10
-            : lowStockThreshold,
+          lowStockThreshold: Number.isNaN(lowStockThreshold) ? 10 : lowStockThreshold,
           description: data.description || null,
-          ownerId: data.ownerId, // ★ from req.user.sub
+          ownerId: data.ownerId,
           imageUrl,
           imagePublicId,
         },
         include: { category: true },
       });
 
-      // Log initial stock — inherit ownerId from the product
       if (product.quantity > 0) {
         await tx.stockMovement.create({
           data: {
@@ -329,23 +423,19 @@ export const productService = {
             unitCost: product.costPrice,
             unitPrice: 0,
             notes: 'Initial stock',
-            ownerId: product.ownerId, // ★ inherit
+            ownerId: product.ownerId,
           },
         });
       }
-
       return product;
     });
   },
 
   // ═══════════════════════════════════════════════════════════
-  // Update product (scoped by ownerId)
+  // UPDATE — owner OR admin
   // ═══════════════════════════════════════════════════════════
-  async update(id, data, imageBuffer) {
-    const existing = await prisma.product.findUnique({
-      where:{id},
-      include:{category:true},
-    }) // throws if not found
+  async update(id, data, imageBuffer, ownerId, isAdmin = false) {
+    const existing = await productService.getById(id, ownerId, isAdmin);
 
     if (data.sku) data.sku = String(data.sku).trim().toUpperCase();
 
@@ -358,7 +448,6 @@ export const productService = {
       }
     }
 
-    // ── Handle image ──────────────────────────────────────────
     let imageUrl = existing.imageUrl;
     let imagePublicId = existing.imagePublicId;
 
@@ -371,7 +460,6 @@ export const productService = {
       imagePublicId = uploaded?.publicId;
     }
 
-    // ── Build update payload ──────────────────────────────────
     const updateData = {};
     if (data.name !== undefined) updateData.name = data.name;
     if (data.sku !== undefined) updateData.sku = data.sku;
@@ -379,41 +467,30 @@ export const productService = {
     if (data.costPrice !== undefined) {
       const cp = parseFloat(data.costPrice);
       if (Number.isNaN(cp) || cp < 0) {
-        throw ApiError.badRequest(
-          'costPrice must be a non-negative number',
-          'INVALID_COST_PRICE'
-        );
+        throw ApiError.badRequest('costPrice must be a non-negative number', 'INVALID_COST_PRICE');
       }
       updateData.costPrice = cp;
     }
     if (data.quantity !== undefined) {
       const q = parseInt(data.quantity, 10);
       if (Number.isNaN(q) || q < 0) {
-        throw ApiError.badRequest(
-          'quantity must be a non-negative number',
-          'INVALID_QUANTITY'
-        );
+        throw ApiError.badRequest('quantity must be a non-negative number', 'INVALID_QUANTITY');
       }
       updateData.quantity = q;
     }
     if (data.lowStockThreshold !== undefined) {
       updateData.lowStockThreshold = parseInt(data.lowStockThreshold, 10);
     }
-    if (data.description !== undefined) {
-      updateData.description = data.description;
-    }
+    if (data.description !== undefined) updateData.description = data.description;
     if (imageUrl) {
       updateData.imageUrl = imageUrl;
       updateData.imagePublicId = imagePublicId;
     }
 
-    // ── Transaction: update product + log stock change ────────
     return prisma.$transaction(async (tx) => {
-      const newQty =
-        data.quantity !== undefined
-          ? parseInt(data.quantity, 10)
-          : existing.quantity;
-
+      const newQty = data.quantity !== undefined
+        ? parseInt(data.quantity, 10)
+        : existing.quantity;
       const qtyDiff = newQty - existing.quantity;
 
       if (qtyDiff !== 0) {
@@ -422,13 +499,12 @@ export const productService = {
             productId: id,
             quantity: qtyDiff,
             type: qtyDiff > 0 ? 'purchase' : 'adjustment',
-            unitCost:
-              data.costPrice !== undefined
-                ? parseFloat(data.costPrice)
-                : existing.costPrice,
+            unitCost: data.costPrice !== undefined
+              ? parseFloat(data.costPrice)
+              : existing.costPrice,
             unitPrice: 0,
             notes: 'Manual stock update via product edit',
-            ownerId: existing.ownerId, // ★ FIXED — inherit from product
+            ownerId: existing.ownerId,
           },
         });
       }
@@ -442,14 +518,10 @@ export const productService = {
   },
 
   // ═══════════════════════════════════════════════════════════
-  // Delete product (scoped by ownerId)
+  // DELETE — owner OR admin
   // ═══════════════════════════════════════════════════════════
-  async delete(id) {
-    const product = await prisma.product.findUnique({where:{id}}); // throws if not found / not owned
-
-    if (!product) {
-      throw ApiError.notFound('Product not found', 'PRODUCT_NOT_FOUND');
-    }
+  async delete(id, ownerId, isAdmin = false) {
+    const product = await productService.getById(id, ownerId, isAdmin);
 
     if (product.imagePublicId) {
       await uploadService.deleteImage(product.imagePublicId);

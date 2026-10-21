@@ -28,6 +28,7 @@ model User {
   products  Product[]
   customers Customer[]
   orders    Order[]
+  categories     Category[]
 
   @@map("users")
 }
@@ -50,16 +51,22 @@ model Category {
   // Products in this category
   products    Product[]
 
+  // ★ Owner
+  ownerId     String     @db.ObjectId
+  owner       User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
+  @@unique([ownerId, slug])
   @@index([parentId])
+  @@index([ownerId])
   @@map("categories")
 }
 
 
 // ────────────────────────────────────────────────────────────
-// Product
+// Product (per-owner)
 // ────────────────────────────────────────────────────────────
 
 model Product {
@@ -77,20 +84,24 @@ model Product {
   description       String?
 
   stockMovements StockMovement[]
-  ownerId           String?  @db.ObjectId
-  owner             User?    @relation(fields: [ownerId], references: [id], onDelete: SetNull)
   orderItems        OrderItem[]
+
+  ownerId           String  @db.ObjectId
+  owner             User    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  
 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
+  @@unique([ownerId, sku])
   @@index([categoryId])
   @@index([name])
+  @@index([ownerId])
   @@map("products")
 }
 
 // ────────────────────────────────────────────────────────────
-// Customer
+// Customer (per-owner)
 // ────────────────────────────────────────────────────────────
 
 model Customer {
@@ -101,19 +112,22 @@ model Customer {
   address   String?
   notes     String?
 
-  ownerId   String?  @db.ObjectId
-  owner     User?    @relation(fields: [ownerId], references: [id], onDelete: SetNull)
   orders    Order[]
+
+  ownerId   String  @db.ObjectId
+  owner     User    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([name])
+  @@index([ownerId])
   @@map("customers")
 }
 
 // ────────────────────────────────────────────────────────────
-// Order
+// Order (per-owner)
 // ────────────────────────────────────────────────────────────
 
 model Order {
@@ -133,19 +147,20 @@ model Order {
   status       String   @default("pending") // pending | processing | completed | cancelled
   notes        String?
   
-  ownerId      String?  @db.ObjectId
-  owner        User?    @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  ownerId      String  @db.ObjectId
+  owner        User    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   @@index([status])
+  @@index([ownerId, createdAt])
   @@map("orders")
 }
 
 
 // ------------------------------------------------------
-// Track Historical Stock
+// Track Historical Stock (per-owner)
 // ------------------------------------------------------ 
 model StockMovement {
   id           String   @id @default(auto()) @map("_id") @db.ObjectId
@@ -164,11 +179,13 @@ model StockMovement {
   notes        String?
   
   createdAt    DateTime @default(now())
-  ownerId      String?  @db.ObjectId
-  owner        User?    @relation(fields: [ownerId], references: [id])
+
+  ownerId      String  @db.ObjectId
+  owner        User    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@index([productId])
   @@index([createdAt])
+  @@index([ownerId, createdAt])
   @@map("stock_movements")
 }
 
