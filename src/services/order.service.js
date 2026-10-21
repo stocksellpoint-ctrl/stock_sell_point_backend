@@ -254,6 +254,20 @@ export const orderService = {
     });
   },
 
+  // ═══════════════════════════════════════════════════════════
+  // UPDATE STATUS — owner OR admin (uses getById for the check)
+  // ═══════════════════════════════════════════════════════════
+  async updateStatus(id, status, ownerId, isAdmin = false) {
+    // getById already enforces ownership + throws 404 if not found
+    await orderService.getById(id, ownerId, isAdmin);
+
+    return prisma.order.update({
+      where: { id },
+      data: { status },
+      include: { items: true, customer: true },
+    });
+  },
+
   async delete(id, ownerId, isAdmin = false) {
     const order = await orderService.getById(id, ownerId, isAdmin);
     return prisma.order.delete({ where: { id: order.id } });

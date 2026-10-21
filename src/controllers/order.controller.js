@@ -63,6 +63,39 @@ getById: asyncHandler(async (req, res) => {
   return ApiResponse.ok(res, order);
 }),
 
+// ═══════════════════════════════════════════════════════════
+// UPDATE STATUS — owner OR admin
+//   This is the one that order.routes.js:44 calls.
+// ═══════════════════════════════════════════════════════════
+updateStatus: asyncHandler(async (req, res) => {
+  if (!req.user?.sub) {
+    throw ApiError.unauthorized('Authentication required', 'AUTH_REQUIRED');
+  }
+
+  const { status } = req.body;
+
+  if (!status) {
+    throw ApiError.badRequest('status is required', 'MISSING_STATUS');
+  }
+
+  const allowed = ['pending', 'processing', 'completed', 'cancelled'];
+  if (!allowed.includes(status)) {
+    throw ApiError.badRequest(
+      `status must be one of: ${allowed.join(', ')}`,
+      'INVALID_STATUS'
+    );
+  }
+
+  const order = await orderService.updateStatus(
+    req.params.id,
+    status,
+    req.user.sub,
+    req.user.role === 'admin'
+  );
+
+  return ApiResponse.ok(res, order, 'Order status updated');
+}),
+
 delete: asyncHandler(async (req, res) => {
   if (!req.user?.sub) {
     throw ApiError.unauthorized('Authentication required', 'AUTH_REQUIRED');
