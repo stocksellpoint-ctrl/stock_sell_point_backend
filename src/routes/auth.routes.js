@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authController } from '../controllers/auth.controller.js';
 import { validate } from '../middlewares/validate.middleware.js';
-import { loginSchema, registerSchema } from '../validations/auth.validation.js';
+import { changePasswordSchema, loginSchema, registerSchema } from '../validations/auth.validation.js';
 import { requireAuth } from '../middlewares/auth.middleware.js';
 import { authLimiter } from '../middlewares/rateLimit.middleware.js';
 
@@ -15,3 +15,10 @@ authRoutes.post('/login', authLimiter, validate(loginSchema), authController.log
 authRoutes.get('/me', requireAuth, authController.me);
 // POST /api/v1/auth/logout
 authRoutes.post('/logout', requireAuth, authController.logout);
+// PUT /api/v1/auth/changepassword
+authRoutes.put(
+    '/change-password',
+    requireAuth,
+    validate(changePasswordSchema),
+    authController.changePassword   
+);

@@ -1,6 +1,7 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiResponse } from '../utils/ApiResponse.js';
 import { authService } from '../services/auth.service.js';
+import { ApiError } from '../utils/ApiError.js';
 
 export const authController = {
   register: asyncHandler(async (req, res) => {
@@ -20,5 +21,20 @@ export const authController = {
 
   logout: asyncHandler(async (req, res) => {
     return ApiResponse.ok(res, null, 'Logged out');
+  }),
+
+  changePassword: asyncHandler(async (req, res) => {
+    if(!req.user?.sub){
+      throw ApiError.unauthorized('Authorization required','AUTH_REQUIRED');
+    }    
+
+    const {currentPassword, newPassword} = req.body;
+    const result = await authService.changePassword(req.user.sub, {
+      currentPassword,
+      newPassword, 
+    });
+
+    return ApiResponse.ok(res, result, 'Password changed');
+   
   }),
 };

@@ -83,4 +83,53 @@ export const authService = {
     if (!user) throw ApiError.notFound('User not found','USER_NOT_FOUND');
     return sanitize(user);
   },
+
+  // ═══════════════════════════════════════════════════════════
+  // CHANGE PASSWORD — verifies current, hashes new, updates DB
+  // ═══════════════════════════════════════════════════════════
+  async changePassword(userId, { currentPassword, newPassword }) {
+    // Basic shape checks (defence-in-depth — Zod validates before this)
+    if (!currentPassword || !newPassword) {
+      throw ApiError.badRequest(
+        'currentPassword and newPassword are required',
+        'MISSING_FIELDS'
+      );
+    }
+    if (newPassword.length < 6) {
+      throw ApiError.badRequest(
+        'New password must be at least 6 characters',
+        'WEAK_PASSWORD'
+      );
+    }
+    if (currentPassword === newPassword) {
+      throw ApiError.badRequest(
+        'New password must be different from the current one',
+        'SAME_PASSWORD'
+      );
+    }
+
+    // Load the user with the hashed password
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw ApiError.unauthorized('User not found', 'USER_NOT_FOUND');
+    }
+
+    // Verify the current password
+    const valid = await bcrypt.compare(currentPassword, user.password);
+    if (!valid) {
+      throw ApiError.unauthorized(
+        'Current password is incorrect',
+        'INVALID_CURRENT_PASSWORD'
+      );
+    }
+
+    // Hash and persist the new one
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashed },
+    });
+
+    return { success: true };
+  },
 };
