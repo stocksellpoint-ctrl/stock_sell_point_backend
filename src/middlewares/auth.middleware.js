@@ -4,6 +4,11 @@ import { prisma } from '../config/database.js';
 import { ApiError } from '../utils/ApiError.js';
 
 export const requireAuth = async (req, res, next) => {
+
+  // TEMPORARY DEBUG LOG
+  console.log('[AUTH DEBUG] URL:', req.method, req.originalUrl);
+  console.log('[AUTH DEBUG] Authorization Header:', req.headers.authorization);
+  
   try {
     const header = req.headers.authorization || '';
     const [scheme, token] = header.split(' ');
