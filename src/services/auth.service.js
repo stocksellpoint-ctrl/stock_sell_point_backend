@@ -132,4 +132,64 @@ export const authService = {
 
     return { success: true };
   },
+
+  async updateProfile(userId, { name, email }) {
+    const data = {};
+
+    if (name !== undefined) {
+      const trimmed = String(name).trim();
+      if (!trimmed) {
+        throw ApiError.badRequest('Name cannot be empty', 'INVALID_NAME');
+      }
+      data.name = trimmed;
+    }
+
+    if (email !== undefined) {
+      const normalized = String(email).toLowerCase().trim();
+      if (!normalized) {
+        throw ApiError.badRequest('Email cannot be empty', 'INVALID_EMAIL');
+      }
+      // Only check for duplicates if the email is actually changing
+      const current = await prisma.user.findUnique({ where: { id: userId } });
+      if (current && current.email !== normalized) {
+        const conflict = await prisma.user.findUnique({
+          where: { email: normalized },
+        });
+        if (conflict) {
+          throw ApiError.conflict(
+            'A user with this email already exists',
+            'EMAIL_IN_USE'
+          );
+        }
+      }
+      data.email = normalized;
+    }
+
+    if (Object.keys(data).length === 0) {
+      throw ApiError.badRequest('Nothing to update', 'NO_CHANGES');
+    }
+
+    try {
+      const updated = await prisma.user.update({
+        where: { id: userId },
+        data,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          isActive: true,
+        },
+      });
+      return updated;
+    } catch (err) {
+      if (err.code === 'P2002') {
+        throw ApiError.conflict(
+          'A user with this email already exists',
+          'EMAIL_IN_USE'
+        );
+      }
+      throw err;
+    }
+  },
 };

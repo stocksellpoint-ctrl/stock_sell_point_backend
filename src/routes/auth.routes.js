@@ -15,10 +15,17 @@ authRoutes.post('/login', authLimiter, validate(loginSchema), authController.log
 authRoutes.get('/me', requireAuth, authController.me);
 // POST /api/v1/auth/logout
 authRoutes.post('/logout', requireAuth, authController.logout);
-// PUT /api/v1/auth/changepassword
+// PUT /api/v1/auth/change-password
 authRoutes.put(
     '/change-password',
     requireAuth,
     validate(changePasswordSchema),
     authController.changePassword   
+);
+// PUT /api/v1/auth/me/profile
+authRoutes.put(
+  '/me/profile',
+  requireAuth,
+  validate(updateProfileSchema),
+  authController.updateProfile
 );

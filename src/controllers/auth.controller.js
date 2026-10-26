@@ -37,4 +37,19 @@ export const authController = {
     return ApiResponse.ok(res, result, 'Password changed');
    
   }),
+
+  updateProfile: asyncHandler(async (req, res) => {
+    if (!req.user?.sub) {
+      throw ApiError.unauthorized('Authentication required', 'AUTH_REQUIRED');
+    }
+
+    const { name, email } = req.body;
+
+    const updated = await authService.updateProfile(req.user.sub, {
+      name,
+      email,
+    });
+
+    return ApiResponse.ok(res, updated, 'Profile updated');
+  }),
 };
