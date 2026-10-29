@@ -1,6 +1,7 @@
 
 import { prisma } from '../config/database.js';
 import { ApiError } from '../utils/ApiError.js';
+import { getUniqueSku } from '../utils/GenerateSku.js';
 import { uploadService } from './upload.service.js';
 
 // Build the ownership clause shared by every read/write op
