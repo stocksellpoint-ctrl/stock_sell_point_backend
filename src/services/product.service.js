@@ -172,10 +172,22 @@ export const productService = {
   async update(id, data, imageBuffer, ownerId, isAdmin = false) {
     const existing = await productService.getById(id, ownerId, isAdmin);
 
-    if (data.sku !== undefined){
-      data.sku = normalizeSku(data.sku);
+     // --- SKU Logic ---
+    let skuToUpdate = existing.sku; // Keep existing by default
+
+    if (data.sku !== undefined) {
+      const userProvidedSku = normalizeSku(data.sku);
+
+      if (!userProvidedSku) {
+        // If user cleared the SKU field, generate an auto-SKU
+        skuToUpdate = await getUniqueSku(null, existing.ownerId, id);
+      } else if (userProvidedSku !== existing.sku) {
+        // If user typed a new SKU, ensure it's unique (append suffix if taken)
+        skuToUpdate = await getUniqueSku(userProvidedSku, existing.ownerId, id);
+      }
     } 
 
+    // --- Category Validation ---
     if (data.categoryId) {
       const cat = await prisma.category.findFirst({
         where: { id: data.categoryId , ownerId:existing.ownerId},
@@ -199,7 +211,7 @@ export const productService = {
 
     const updateData = {};
     if (data.name !== undefined) updateData.name = data.name;
-    if (data.sku !== undefined) updateData.sku = data.sku;
+    if (data.sku !== undefined) updateData.sku = skuToUpdate; // Apply the processed SKU
     if (data.categoryId !== undefined) updateData.categoryId = data.categoryId;
     if (data.costPrice !== undefined) {
       const cp = parseFloat(data.costPrice);
@@ -224,6 +236,7 @@ export const productService = {
       updateData.imagePublicId = imagePublicId;
     }
 
+    // --- Database Transaction ---
     return prisma.$transaction(async (tx) => {
       const newQty = data.quantity !== undefined
         ? parseInt(data.quantity, 10)
