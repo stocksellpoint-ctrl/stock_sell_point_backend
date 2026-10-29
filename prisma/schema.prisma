@@ -189,6 +189,34 @@ model StockMovement {
   @@map("stock_movements")
 }
 
+// ------------------------------------------------------
+// Business information Stock (per-owner)
+// ------------------------------------------------------ 
+model BusinessInfo {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  ownerId        String   @unique // One business profile per user/tenant
+  
+  // Mandatory
+  companyName    String
+  slogan         String
+  phone          String
+  
+  // Optional
+  address        String?
+  email          String?
+  specialization String?
+  tinNumber      String?
+  binNumber      String?
+  currencySymbol String   @default("BDT")
+  
+  // Logo
+  logoUrl        String?
+  logoPublicId   String?
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
 
 // ────────────────────────────────────────────────────────────
 // OrderItem  (embedded inside Order)
