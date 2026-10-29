@@ -1,21 +1,25 @@
 import express from 'express';
 import multer from 'multer';
 import { businessController } from '../controllers/business.controller.js';
-import { verifyJWT } from '../middlewares/auth.middleware.js';
+
+// ✅ Correct import: your middleware exports `requireAuth`, not `verifyJWT`
+import { requireAuth } from '../middlewares/auth.middleware.js';
 
 const router = express.Router();
 
-// Use memory storage so we can pass the buffer to Cloudinary/ImageKit
-const upload = multer({ 
+const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
 });
 
-// Apply auth middleware to all routes
-router.use(verifyJWT);
+// Apply auth to all business routes
+router.use(requireAuth);
+
+router.route('/check')
+  .get(businessController.check);
 
 router.route('/')
   .get(businessController.get)
-  .put(upload.single('logo'), businessController.update); // 'logo' must match Flutter's FormData key
+  .put(upload.single('logo'), businessController.upsert);
 
 export default router;

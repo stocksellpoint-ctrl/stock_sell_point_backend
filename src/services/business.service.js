@@ -3,49 +3,46 @@ import { ApiError } from '../utils/ApiError.js';
 import { uploadService } from './upload.service.js';
 
 export const businessService = {
-  // Get or Create Business Profile
-  async getOrCreate(ownerId) {
-    let business = await prisma.businessInfo.findUnique({
+  // 🟢 1. Check if the user has set up their business info
+  async checkSetup(ownerId) {
+    const business = await prisma.businessInfo.findUnique({
       where: { ownerId },
+      select: { id: true } // Only fetch the ID to keep it lightweight
     });
-
-    if (!business) {
-      // Create default profile if none exists
-      business = await prisma.businessInfo.create({
-        data: {
-          ownerId,
-          companyName: 'My Company',
-          slogan: 'Your Slogan Here',
-          phone: '0000000000',
-        },
-      });
-    }
-
-    return business;
+    
+    return { isSetup: !!business }; // true if exists, false if null
   },
 
-  // Update Business Profile
-  async update(ownerId, data, logoBuffer) {
-    const existing = await this.getOrCreate(ownerId);
+  // 🟢 2. Get the profile (Returns null if not setup)
+  async get(ownerId) {
+    const business = await prisma.businessInfo.findUnique({
+      where: { ownerId },
+    });
+    return business; // Returns null if user hasn't set it up yet
+  },
 
+  // 🟢 3. Create or Update (Upsert)
+  async upsert(ownerId, data, logoBuffer) {
     // Validation for mandatory fields
-    if (data.companyName !== undefined && !data.companyName.trim()) {
+    if (!data.companyName || !data.companyName.trim()) {
       throw ApiError.badRequest('Company Name is required', 'INVALID_COMPANY_NAME');
     }
-    if (data.slogan !== undefined && !data.slogan.trim()) {
+    if (!data.slogan || !data.slogan.trim()) {
       throw ApiError.badRequest('Slogan is required', 'INVALID_SLOGAN');
     }
-    if (data.phone !== undefined && !data.phone.trim()) {
+    if (!data.phone || !data.phone.trim()) {
       throw ApiError.badRequest('Phone number is required', 'INVALID_PHONE');
     }
 
-    let logoUrl = existing.logoUrl;
-    let logoPublicId = existing.logoPublicId;
+    // Check if it exists to handle old logo deletion
+    const existing = await prisma.businessInfo.findUnique({ where: { ownerId } });
+
+    let logoUrl = existing?.logoUrl || null;
+    let logoPublicId = existing?.logoPublicId || null;
 
     // Handle new logo upload
     if (logoBuffer) {
-      // Delete old logo if exists
-      if (existing.logoPublicId) {
+      if (existing?.logoPublicId) {
         await uploadService.deleteImage(existing.logoPublicId);
       }
       const uploaded = await uploadService.uploadImage(logoBuffer);
@@ -53,18 +50,33 @@ export const businessService = {
       logoPublicId = uploaded?.publicId;
     }
 
-    return prisma.businessInfo.update({
+    // Upsert: Create if new, Update if existing
+    return prisma.businessInfo.upsert({
       where: { ownerId },
-      data: {
-        companyName: data.companyName ?? existing.companyName,
-        slogan: data.slogan ?? existing.slogan,
-        phone: data.phone ?? existing.phone,
-        address: data.address !== undefined ? data.address : existing.address,
-        email: data.email !== undefined ? data.email : existing.email,
-        specialization: data.specialization !== undefined ? data.specialization : existing.specialization,
-        tinNumber: data.tinNumber !== undefined ? data.tinNumber : existing.tinNumber,
-        binNumber: data.binNumber !== undefined ? data.binNumber : existing.binNumber,
-        currencySymbol: data.currencySymbol ?? existing.currencySymbol,
+      create: {
+        ownerId,
+        companyName: data.companyName,
+        slogan: data.slogan,
+        phone: data.phone,
+        address: data.address || null,
+        email: data.email || null,
+        specialization: data.specialization || null,
+        tinNumber: data.tinNumber || null,
+        binNumber: data.binNumber || null,
+        currencySymbol: data.currencySymbol || 'BDT',
+        logoUrl,
+        logoPublicId,
+      },
+      update: {
+        companyName: data.companyName,
+        slogan: data.slogan,
+        phone: data.phone,
+        address: data.address !== undefined ? data.address : existing?.address,
+        email: data.email !== undefined ? data.email : existing?.email,
+        specialization: data.specialization !== undefined ? data.specialization : existing?.specialization,
+        tinNumber: data.tinNumber !== undefined ? data.tinNumber : existing?.tinNumber,
+        binNumber: data.binNumber !== undefined ? data.binNumber : existing?.binNumber,
+        currencySymbol: data.currencySymbol || existing?.currencySymbol || 'BDT',
         logoUrl,
         logoPublicId,
       },
