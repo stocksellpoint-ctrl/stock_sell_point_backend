@@ -1,3 +1,6 @@
+import { prisma } from '../config/database.js';
+import { ApiError } from '../utils/ApiError.js';
+
 /**
  * Generates a unique SKU.
  * 1. If no baseSku is provided, generates an automatic one (PRD-Timestamp).
