@@ -1,11 +1,14 @@
-import express from 'express';
+import { Router } from 'express';
 import multer from 'multer';
 import { businessController } from '../controllers/business.controller.js';
 
 // ✅ Correct import: your middleware exports `requireAuth`, not `verifyJWT`
 import { requireAuth } from '../middlewares/auth.middleware.js';
 
-const router = express.Router();
+
+export const businessRoutes = Router();
+
+
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -13,13 +16,11 @@ const upload = multer({
 });
 
 // Apply auth to all business routes
-router.use(requireAuth);
+businessRoutes.use(requireAuth);
 
-router.route('/check')
+businessRoutes.route('/check')
   .get(businessController.check);
 
-router.route('/')
+businessRoutes.route('/')
   .get(businessController.get)
   .put(upload.single('logo'), businessController.upsert);
-
-export default router;
