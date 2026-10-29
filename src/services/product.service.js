@@ -150,17 +150,22 @@ export const productService = {
       });
 
       if (product.quantity > 0) {
-        await tx.stockMovement.create({
-          data: {
-            productId: product.id,
-            quantity: product.quantity,
-            type: 'initial',
-            unitCost: product.costPrice,
-            unitPrice: 0,
-            notes: 'Initial stock',
-            ownerId: product.ownerId,
-          },
-        });
+        try {
+          await tx.stockMovement.create({
+            data: {
+              productId: product.id,
+              quantity: product.quantity,
+              type: 'initial',
+              unitCost: product.costPrice ?? 0,   // ← fallback for null
+              unitPrice: 0,
+              notes: 'Initial stock',
+              ownerId: product.ownerId,
+            },
+          });
+        } catch (stockErr) {
+          console.error('STOCK MOVEMENT FAILED:', stockErr);
+          throw stockErr; // re-throw so transaction rolls back
+        }
       }
       return product;
     });
