@@ -7,54 +7,6 @@ function ownerWhere(ownerId, isAdmin) {
   return isAdmin ? {} : { ownerId };
 }
 
-// Here everyone can see everything
-// export const customerService = {
-//   async list({ search, page = 1, limit = 50 } = {}) {
-//     page = parseInt(page, 10) || 1;
-//     limit = parseInt(limit, 10) || 50;
-
-//     const where = {};
-//     if (search) {
-//       where.OR = [
-//         { name: { contains: search, mode: 'insensitive' } },
-//         { phone: { contains: search } },
-//         { email: { contains: search, mode: 'insensitive' } },
-//       ];
-//     }
-
-//     const [items, total] = await Promise.all([
-//       prisma.customer.findMany({
-//         where,
-//         orderBy: { createdAt: 'desc' },
-//         skip: (page - 1) * limit,
-//         take: limit,
-//       }),
-//       prisma.customer.count({ where }),
-//     ]);
-
-//     return { items, total, page, limit };
-//   },
-
-//   async getById(id) {
-//     const c = await prisma.customer.findUnique({ where: { id } });
-//     if (!c) throw ApiError.notFound('Customer not found');
-//     return c;
-//   },
-
-//   async create(data) {
-//     return prisma.customer.create({ data });
-//   },
-
-//   async update(id, data) {
-//     await customerService.getById(id);
-//     return prisma.customer.update({ where: { id }, data });
-//   },
-
-//   async delete(id) {
-//     await customerService.getById(id);
-//     return prisma.customer.delete({ where: { id } });
-//   },
-// };
 
 
 
@@ -171,7 +123,22 @@ export const customerService = {
   // DELETE — owner OR admin
   // ═══════════════════════════════════════════════════════════
   async delete(id, ownerId, isAdmin = false) {
+    // 1. verify the customer exists and belongs to this owner
     await customerService.getById(id, ownerId, isAdmin);
+
+    // 2. check for related orders
+    const orderCount = await prisma.order.count({
+      where:{customerId: id},
+    });
+
+    if(orderCount > 0){
+      // friendly error the flutter app can display directly
+      throw ApiError.badRequest(
+        `This customer cannot be deleted because ${orderCount} orders${orderCount > 1 ? 's' : ''} already exist${orderCount === 1 ? 's' : ''} for them. Please delete those orders first.`, 'CUSTOMER_HAS_ORDERS'
+      );
+    }
+
+    // 3. safe to delete
     return prisma.customer.delete({ where: { id } });
   },
 };
