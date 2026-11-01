@@ -138,6 +138,8 @@ model Order {
   customer      Customer @relation(fields: [customerId], references: [id])
   items         OrderItem[]
 
+  invoiceNumber String  
+
   subtotal        Float       @default(0)   // ★ sum of items before discount
   // discountType    String      @default("none")  // ★ "none" | "amount" | "percent"
   // discountValue   Float       @default(0)   // ★ the raw value (e.g. 10 for 10%, or 20 for AED 20)
@@ -152,6 +154,8 @@ model Order {
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  @@unique([ownerId, invoiceNumber])
 
   @@index([status])
   @@index([ownerId, createdAt])
@@ -208,6 +212,9 @@ model BusinessInfo {
   tinNumber      String?
   binNumber      String?
   currencySymbol String   @default("BDT")
+
+
+  invoicePrefix  String   @default("INV")
   
   // Logo
   logoUrl        String?
