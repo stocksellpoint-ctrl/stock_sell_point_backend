@@ -233,6 +233,7 @@ type OrderItem {
   productId       String
   productName     String
   categoryId     String   @default("")   // ★ NEW
+  categoryName    String   @default("")
   quantity        Int
 
   sellingPrice    Float      // unit selling price set by the cashier or seller

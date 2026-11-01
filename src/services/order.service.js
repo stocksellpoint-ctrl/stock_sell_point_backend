@@ -95,6 +95,15 @@ export const orderService = {
         if (!product) throw ApiError.badRequest(`Product not found...`, 'PRODUCT_NOT_FOUND');
         if (product.quantity < qty) throw ApiError.badRequest(`Insufficient stock...`, 'INSUFFICIENT_STOCK');
 
+        let categoryName = '';
+        if(product.categoryId){
+          const category = await tx.category.findUnique({
+            where:{id:product.categoryId}, 
+            select:{name:true}
+          }); 
+          categoryName = category?.name || '';
+        }
+
         let dt = discType;
         let dv = rawDiscValue;
         let unitDiscount = 0;
@@ -125,6 +134,8 @@ export const orderService = {
           productId: String(item.productId),
           productName: String(product.name),
           categoryId: product.categoryId ? String(product.categoryId) : '',
+
+          categoryName:categoryName,
           quantity: qty,
           sellingPrice: sellingPrice,
           costPrice: Number(product.costPrice) || 0,
