@@ -27,6 +27,11 @@ export const businessService = {
     if (!data.companyName || !data.companyName.trim()) {
       throw ApiError.badRequest('Company Name is required', 'INVALID_COMPANY_NAME');
     }
+
+    if (!data.ownerName || !data.ownerName.trim()) {
+      throw ApiError.badRequest('Owner Name is required', 'INVALID_OWNER_NAME');
+    }
+
     if (!data.slogan || !data.slogan.trim()) {
       throw ApiError.badRequest('Slogan is required', 'INVALID_SLOGAN');
     }
@@ -55,6 +60,7 @@ export const businessService = {
       where: { ownerId },
       create: {
         ownerId,
+        ownerName: data.ownerName.trim(),
         companyName: data.companyName,
         slogan: data.slogan,
         phone: data.phone,
@@ -68,6 +74,7 @@ export const businessService = {
         logoPublicId,
       },
       update: {
+        ownerName: data.ownerName.trim(),
         companyName: data.companyName,
         slogan: data.slogan,
         phone: data.phone,

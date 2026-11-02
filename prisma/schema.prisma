@@ -199,6 +199,8 @@ model StockMovement {
 model BusinessInfo {
   id             String   @id @default(auto()) @map("_id") @db.ObjectId
   ownerId        String   @unique // One business profile per user/tenant
+
+  ownerName      String
   
   // Mandatory
   companyName    String
